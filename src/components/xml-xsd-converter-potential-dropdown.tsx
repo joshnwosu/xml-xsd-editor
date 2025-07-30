@@ -57,6 +57,17 @@ const XMLXSDConverter: React.FC = () => {
   const [editorContent, setEditorContent] = useState<string>('');
   const [showWysiwygEditor, setShowWysiwygEditor] = useState(false);
 
+  const [schemaInfo, setSchemaInfo] = useState<{
+    [elementName: string]: {
+      type?: string;
+      enumValues?: string[];
+      attributes?: {
+        [attrName: string]: { enumValues?: string[]; type?: string };
+      };
+    };
+  }>({});
+  const [typeDefinitions, setTypeDefinitions] = useState<any>();
+
   // Update the handleFileUpload function to store the original content:
   const handleFileUpload = (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -82,12 +93,259 @@ const XMLXSDConverter: React.FC = () => {
       } else {
         setXsdFile(fileData);
         setRawXsdContent(content);
+
+        const { schemaInfo: parsedSchema, typeDefinitions } =
+          parseXSDSchema(content);
+
+        setSchemaInfo(parsedSchema);
+        setTypeDefinitions(typeDefinitions);
+
+        console.log('Parsed XSD Schema:', parsedSchema);
+        console.log('Type Definitions:', typeDefinitions);
       }
 
       // Basic validation
       validateXML(content, type);
     };
     reader.readAsText(file);
+  };
+
+  const parseXSDSchema = (xsdContent: string) => {
+    try {
+      const parser = new DOMParser();
+      const xsdDoc = parser.parseFromString(xsdContent, 'application/xml');
+
+      // Check for parsing errors
+      const parserError = xsdDoc.querySelector('parsererror');
+      if (parserError) {
+        console.error('XSD parsing error:', parserError.textContent);
+        return { schemaInfo: {}, typeDefinitions: {} };
+      }
+
+      const schemaInfo: {
+        [elementName: string]: {
+          type?: string;
+          enumValues?: string[];
+          attributes?: {
+            [attrName: string]: { enumValues?: string[]; type?: string };
+          };
+        };
+      } = {};
+
+      const typeDefinitions: { [typeName: string]: { enumValues?: string[] } } =
+        {};
+
+      // Get all namespaces to handle prefixed elements
+      const namespaceURI = 'http://www.w3.org/2001/XMLSchema';
+
+      // ENHANCED: Parse simple types with enumerations (with better namespace handling)
+      const parseSimpleTypes = (useNamespace: boolean) => {
+        const simpleTypes = useNamespace
+          ? xsdDoc.getElementsByTagNameNS(namespaceURI, 'simpleType')
+          : xsdDoc.getElementsByTagName('simpleType');
+
+        for (let i = 0; i < simpleTypes.length; i++) {
+          const simpleType = simpleTypes[i];
+          const typeName = simpleType.getAttribute('name');
+
+          if (typeName) {
+            const enumerations = useNamespace
+              ? simpleType.getElementsByTagNameNS(namespaceURI, 'enumeration')
+              : simpleType.getElementsByTagName('enumeration');
+
+            const enumValues: string[] = [];
+
+            for (let j = 0; j < enumerations.length; j++) {
+              const enumValue = enumerations[j].getAttribute('value');
+              if (enumValue) {
+                enumValues.push(enumValue);
+              }
+            }
+
+            if (enumValues.length > 0) {
+              typeDefinitions[typeName] = { enumValues };
+              console.log(
+                `Found simple type: ${typeName} with values:`,
+                enumValues
+              );
+            }
+          }
+        }
+      };
+
+      // ENHANCED: Parse complex types that contain simple types with enumerations
+      const parseComplexTypes = (useNamespace: boolean) => {
+        const complexTypes = useNamespace
+          ? xsdDoc.getElementsByTagNameNS(namespaceURI, 'complexType')
+          : xsdDoc.getElementsByTagName('complexType');
+
+        for (let i = 0; i < complexTypes.length; i++) {
+          const complexType = complexTypes[i];
+          const typeName = complexType.getAttribute('name');
+
+          // Look for nested simple types with enumerations
+          const nestedSimpleTypes = useNamespace
+            ? complexType.getElementsByTagNameNS(namespaceURI, 'simpleType')
+            : complexType.getElementsByTagName('simpleType');
+
+          for (let j = 0; j < nestedSimpleTypes.length; j++) {
+            const simpleType = nestedSimpleTypes[j];
+            const enumerations = useNamespace
+              ? simpleType.getElementsByTagNameNS(namespaceURI, 'enumeration')
+              : simpleType.getElementsByTagName('enumeration');
+
+            const enumValues: string[] = [];
+            for (let k = 0; k < enumerations.length; k++) {
+              const enumValue = enumerations[k].getAttribute('value');
+              if (enumValue) {
+                enumValues.push(enumValue);
+              }
+            }
+
+            if (enumValues.length > 0 && typeName) {
+              typeDefinitions[typeName] = { enumValues };
+              console.log(
+                `Found complex type: ${typeName} with values:`,
+                enumValues
+              );
+            }
+          }
+        }
+      };
+
+      // ENHANCED: Parse elements with better type resolution
+      const parseElements = (useNamespace: boolean) => {
+        const elements = useNamespace
+          ? xsdDoc.getElementsByTagNameNS(namespaceURI, 'element')
+          : xsdDoc.getElementsByTagName('element');
+
+        for (let i = 0; i < elements.length; i++) {
+          const element = elements[i];
+          const elementName = element.getAttribute('name');
+          const elementType = element.getAttribute('type');
+
+          if (elementName) {
+            schemaInfo[elementName] = {};
+
+            // Check if element type matches a defined simple type
+            if (elementType) {
+              // Handle different type formats: "xs:string", "tns:MyType", "MyType"
+              const typeVariants: string[] = [
+                elementType, // Original type
+                elementType.includes(':')
+                  ? elementType.split(':')[1]
+                  : elementType, // Remove prefix
+              ];
+
+              // Add the last part of the type if it exists
+              const lastPart = elementType.split(':').pop();
+              if (lastPart && lastPart !== elementType) {
+                typeVariants.push(lastPart);
+              }
+
+              for (const typeVariant of typeVariants) {
+                if (typeDefinitions[typeVariant]) {
+                  schemaInfo[elementName] = { ...typeDefinitions[typeVariant] };
+                  console.log(
+                    `Matched element ${elementName} to type ${typeVariant}`
+                  );
+                  break;
+                }
+              }
+
+              // Store the type reference for debugging
+              schemaInfo[elementName].type = elementType;
+            }
+
+            // ENHANCED: Check for inline enumerations (immediate child restrictions)
+            const restrictions = useNamespace
+              ? element.getElementsByTagNameNS(namespaceURI, 'restriction')
+              : element.getElementsByTagName('restriction');
+
+            for (let j = 0; j < restrictions.length; j++) {
+              const restriction = restrictions[j];
+              const inlineEnums = useNamespace
+                ? restriction.getElementsByTagNameNS(
+                    namespaceURI,
+                    'enumeration'
+                  )
+                : restriction.getElementsByTagName('enumeration');
+
+              const enumValues: string[] = [];
+              for (let k = 0; k < inlineEnums.length; k++) {
+                const enumValue = inlineEnums[k].getAttribute('value');
+                if (enumValue) {
+                  enumValues.push(enumValue);
+                }
+              }
+
+              if (enumValues.length > 0) {
+                schemaInfo[elementName].enumValues = enumValues;
+                console.log(
+                  `Found inline enums for ${elementName}:`,
+                  enumValues
+                );
+              }
+            }
+
+            // ENHANCED: Check for nested simple types with enumerations
+            const nestedSimpleTypes = useNamespace
+              ? element.getElementsByTagNameNS(namespaceURI, 'simpleType')
+              : element.getElementsByTagName('simpleType');
+
+            for (let j = 0; j < nestedSimpleTypes.length; j++) {
+              const simpleType = nestedSimpleTypes[j];
+              const enumerations = useNamespace
+                ? simpleType.getElementsByTagNameNS(namespaceURI, 'enumeration')
+                : simpleType.getElementsByTagName('enumeration');
+
+              const enumValues: string[] = [];
+              for (let k = 0; k < enumerations.length; k++) {
+                const enumValue = enumerations[k].getAttribute('value');
+                if (enumValue) {
+                  enumValues.push(enumValue);
+                }
+              }
+
+              if (enumValues.length > 0) {
+                schemaInfo[elementName].enumValues = enumValues;
+                console.log(
+                  `Found nested enum for ${elementName}:`,
+                  enumValues
+                );
+              }
+            }
+          }
+        }
+      };
+
+      // Try with namespace first, then without
+      parseSimpleTypes(true);
+      parseComplexTypes(true);
+      parseElements(true);
+
+      // If nothing found, try without namespace
+      if (Object.keys(typeDefinitions).length === 0) {
+        console.log(
+          'No types found with namespace, trying without namespace...'
+        );
+        parseSimpleTypes(false);
+        parseComplexTypes(false);
+      }
+
+      if (Object.keys(schemaInfo).length === 0) {
+        console.log(
+          'No elements found with namespace, trying without namespace...'
+        );
+        parseElements(false);
+      }
+
+      console.log('Final parsed XSD Schema:', { schemaInfo, typeDefinitions });
+      return { schemaInfo, typeDefinitions };
+    } catch (error) {
+      console.error('Error parsing XSD schema:', error);
+      return { schemaInfo: {}, typeDefinitions: {} };
+    }
   };
 
   const validateXML = (content: string, type: 'xml' | 'xsd') => {
@@ -216,7 +474,414 @@ const XMLXSDConverter: React.FC = () => {
     // }
   }, []);
 
-  const generateTablePreview = (xmlContent: string): string => {
+  // Enhanced enum value checking with multiple matching strategies
+  const checkForEnumValues = (
+    elementName: string,
+    schemaInfo: any,
+    typeDefinitions: any
+  ) => {
+    console.log(`Processing element: ${elementName}`);
+    console.log(`Available schema keys:`, Object.keys(schemaInfo));
+
+    // Primary check: Direct element name match
+    let elementSchema = schemaInfo[elementName];
+    console.log(`Schema info for ${elementName}:`, elementSchema);
+
+    // Check if direct match has enum values
+    let hasEnumValues =
+      elementSchema?.enumValues && elementSchema.enumValues.length > 0;
+    let matchedSchema = elementSchema;
+
+    if (!hasEnumValues) {
+      console.log(
+        `No direct enum match for ${elementName}, trying alternative strategies...`
+      );
+
+      // Strategy 1: Case-insensitive matching
+      const lowerElementName = elementName.toLowerCase();
+      const caseInsensitiveKey = Object.keys(schemaInfo).find(
+        (key) => key.toLowerCase() === lowerElementName
+      );
+
+      if (
+        caseInsensitiveKey &&
+        schemaInfo[caseInsensitiveKey]?.enumValues?.length > 0
+      ) {
+        matchedSchema = schemaInfo[caseInsensitiveKey];
+        hasEnumValues = true;
+        console.log(
+          `Found case-insensitive match: ${caseInsensitiveKey} for ${elementName}`
+        );
+      }
+
+      // Strategy 2: Partial matching (if case-insensitive didn't work)
+      if (!hasEnumValues) {
+        const partialMatchKey = Object.keys(schemaInfo).find(
+          (key) => key.includes(elementName) || elementName.includes(key)
+        );
+
+        if (
+          partialMatchKey &&
+          schemaInfo[partialMatchKey]?.enumValues?.length > 0
+        ) {
+          matchedSchema = schemaInfo[partialMatchKey];
+          hasEnumValues = true;
+          console.log(
+            `Found partial match: ${partialMatchKey} for ${elementName}`
+          );
+        }
+      }
+
+      // Strategy 3: Check type definitions for complex types
+      if (!hasEnumValues && typeDefinitions) {
+        // If the element has a type attribute, check type definitions
+        const elementType = elementSchema?.type;
+        if (
+          elementType &&
+          typeDefinitions[elementType]?.enumValues?.length > 0
+        ) {
+          matchedSchema = typeDefinitions[elementType];
+          hasEnumValues = true;
+          console.log(`Found enum values in type definition: ${elementType}`);
+        }
+      }
+    }
+
+    return {
+      hasEnumValues,
+      matchedSchema,
+      enumValues: matchedSchema?.enumValues || [],
+    };
+  };
+
+  // Updated generateTablePreview function with enum support
+  const generateTablePreview = (
+    xmlContent: string,
+    schemaInfo: any,
+    typeDefinitions: any
+  ): string => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlContent, 'application/xml');
+
+    let html = '<div class="table-preview">';
+
+    const processNodeToTable = (node: Element, level: number = 0): string => {
+      let result = '';
+
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        if (level === 0) {
+          // Root element as main table title
+          result += `<h2 class="table-title">${formatTagName(
+            node.tagName
+          )}</h2>`;
+
+          // Create main data table
+          result += '<table class="data-table">';
+          result += '<thead><tr><th>Field</th><th>Value</th></tr></thead>';
+          result += '<tbody>';
+
+          // Process children
+          Array.from(node.children).forEach((child) => {
+            result += processChildToTableRow(child as Element, 1);
+          });
+
+          result += '</tbody></table>';
+        } else if (level === 1) {
+          // First level children create section tables
+          result += `<h3 class="section-title">${formatTagName(
+            node.tagName
+          )}</h3>`;
+          result += '<table class="section-table">';
+          result += '<thead><tr><th>Property</th><th>Value</th></tr></thead>';
+          result += '<tbody>';
+
+          // Add attributes as rows with enum support
+          if (node.attributes.length > 0) {
+            for (let i = 0; i < node.attributes.length; i++) {
+              const attr = node.attributes[i];
+              const attrSchema =
+                schemaInfo[node.tagName]?.attributes?.[attr.name];
+              const attrHasEnums =
+                attrSchema?.enumValues && attrSchema.enumValues.length > 0;
+
+              result += `<tr class="attr-row">
+              <td class="attr-name">${formatTagName(attr.name)}</td>
+              <td class="attr-value">`;
+
+              if (attrHasEnums && attrSchema?.enumValues) {
+                result += `<select class="enum-select" data-element="${node.tagName}" data-attribute="${attr.name}">`;
+                attrSchema.enumValues.forEach((enumValue: any) => {
+                  const selected = enumValue === attr.value ? 'selected' : '';
+                  result += `<option value="${enumValue}" ${selected}>${enumValue}</option>`;
+                });
+                result += '</select>';
+              } else {
+                result += `<input type="text" class="editable-field attr-field" value="${attr.value}" data-element="${node.tagName}" data-attribute="${attr.name}">`;
+              }
+
+              result += `</td></tr>`;
+            }
+          }
+
+          // Process child elements
+          Array.from(node.children).forEach((child) => {
+            result += processChildToTableRow(child as Element, 2);
+          });
+
+          // If no children but has text content
+          if (
+            node.children.length === 0 &&
+            node.textContent &&
+            node.textContent.trim()
+          ) {
+            const text = node.textContent.trim();
+            const { hasEnumValues, enumValues } = checkForEnumValues(
+              node.tagName,
+              schemaInfo,
+              typeDefinitions
+            );
+
+            result += `<tr class="content-row">
+            <td class="field-name">Content</td>
+            <td class="field-value">`;
+
+            if (hasEnumValues) {
+              result += `<select class="enum-select" data-element="${node.tagName}">`;
+              enumValues.forEach((enumValue: any) => {
+                const selected = enumValue === text ? 'selected' : '';
+                result += `<option value="${enumValue}" ${selected}>${enumValue}</option>`;
+              });
+              result += '</select>';
+            } else {
+              result += `<input type="text" class="editable-field" value="${text}" data-element="${node.tagName}">`;
+            }
+
+            result += `</td></tr>`;
+          }
+
+          result += '</tbody></table><br>';
+        }
+      }
+
+      return result;
+    };
+
+    const processChildToTableRow = (node: Element, level: number): string => {
+      let result = '';
+
+      if (node.children.length === 0) {
+        // Leaf node - create editable table row
+        const text = node.textContent?.trim() || '';
+        const elementName = node.tagName;
+
+        // Check for enum values using enhanced logic
+        const { hasEnumValues, enumValues } = checkForEnumValues(
+          elementName,
+          schemaInfo,
+          typeDefinitions
+        );
+
+        result += `<tr class="data-row">
+        <td class="field-name">${formatTagName(node.tagName)}</td>
+        <td class="field-value">`;
+
+        if (hasEnumValues) {
+          console.log(
+            `Creating dropdown for ${elementName} with values:`,
+            enumValues
+          );
+
+          // Create dropdown for enum values
+          result += `<select class="enum-select" data-element="${elementName}">`;
+          enumValues.forEach((enumValue: any) => {
+            const selected = enumValue === text ? 'selected' : '';
+            result += `<option value="${enumValue}" ${selected}>${enumValue}</option>`;
+          });
+          result += '</select>';
+        } else {
+          console.log(
+            `Creating text input for ${elementName} (no enum values found)`
+          );
+
+          // Regular editable field
+          result += `<input type="text" class="editable-field" value="${text}" data-element="${elementName}">`;
+        }
+
+        result += `</td></tr>`;
+
+        // Handle attributes with potential enum values
+        if (node.attributes.length > 0) {
+          for (let i = 0; i < node.attributes.length; i++) {
+            const attr = node.attributes[i];
+            const attrSchema = schemaInfo[elementName]?.attributes?.[attr.name];
+            const attrHasEnums =
+              attrSchema?.enumValues && attrSchema.enumValues.length > 0;
+
+            result += `<tr class="attr-row">
+            <td class="field-name">${formatTagName(
+              node.tagName
+            )} - ${formatTagName(attr.name)}</td>
+            <td class="field-value">`;
+
+            if (attrHasEnums && attrSchema?.enumValues) {
+              result += `<select class="enum-select" data-element="${elementName}" data-attribute="${attr.name}">`;
+              attrSchema.enumValues.forEach((enumValue: any) => {
+                const selected = enumValue === attr.value ? 'selected' : '';
+                result += `<option value="${enumValue}" ${selected}>${enumValue}</option>`;
+              });
+              result += '</select>';
+            } else {
+              result += `<input type="text" class="editable-field attr-field" value="${attr.value}" data-element="${elementName}" data-attribute="${attr.name}">`;
+            }
+
+            result += `</td></tr>`;
+          }
+        }
+      } else {
+        // Node with children - create nested structure
+        result += `<tr class="nested-row">
+        <td class="field-name" colspan="2"><strong>${formatTagName(
+          node.tagName
+        )}</strong></td>
+      </tr>`;
+
+        console.log('Processing node:', node.tagName, 'at level', level);
+
+        // Add attributes with enum support
+        if (node.attributes.length > 0) {
+          for (let i = 0; i < node.attributes.length; i++) {
+            const attr = node.attributes[i];
+            const attrSchema =
+              schemaInfo[node.tagName]?.attributes?.[attr.name];
+            const attrHasEnums =
+              attrSchema?.enumValues && attrSchema.enumValues.length > 0;
+
+            result += `<tr class="attr-row">
+            <td class="field-name indent">${formatTagName(attr.name)}</td>
+            <td class="field-value">`;
+
+            if (attrHasEnums && attrSchema?.enumValues) {
+              result += `<select class="enum-select" data-element="${node.tagName}" data-attribute="${attr.name}">`;
+              attrSchema.enumValues.forEach((enumValue: any) => {
+                const selected = enumValue === attr.value ? 'selected' : '';
+                result += `<option value="${enumValue}" ${selected}>${enumValue}</option>`;
+              });
+              result += '</select>';
+            } else {
+              result += `<input type="text" class="editable-field attr-field" value="${attr.value}" data-element="${node.tagName}" data-attribute="${attr.name}">`;
+            }
+
+            result += `</td></tr>`;
+          }
+        }
+
+        // Process children
+        Array.from(node.children).forEach((child) => {
+          result += processChildToTableRow(child as Element, level + 1);
+        });
+      }
+
+      return result;
+    };
+
+    const formatFieldValue = (text: string): string => {
+      if (isEmail(text)) {
+        return `<a href="mailto:${text}" class="email-link">${text}</a>`;
+      } else if (isPhone(text)) {
+        return `<span class="phone-number">${text}</span>`;
+      } else if (isDate(text)) {
+        return `<span class="date-value">${formatDate(text)}</span>`;
+      } else if (isNumber(text)) {
+        return `<span class="number-value">${text}</span>`;
+      } else if (text.length > 50) {
+        return `<div class="long-text">${text}</div>`;
+      }
+      return text;
+    };
+
+    if (doc.documentElement) {
+      html += processNodeToTable(doc.documentElement);
+    }
+    html += '</div>';
+
+    return html;
+  };
+
+  // You'll need to update your generatePreview function to pass the schema info:
+  const generatePreview = useCallback(
+    (xmlContent: string) => {
+      try {
+        let html = '';
+
+        switch (styleType) {
+          case 'table':
+            html = generateTablePreview(
+              xmlContent,
+              schemaInfo,
+              typeDefinitions
+            );
+            break;
+          case 'list':
+            html = generateListPreview(xmlContent);
+            break;
+          case 'card':
+            html = generateCardPreview(xmlContent);
+            break;
+          default:
+            html = generateDocumentPreview(xmlContent);
+            break;
+        }
+
+        setPreviewContent(html);
+        setEditableContent(html);
+      } catch (error) {
+        const errorContent =
+          '<div class="error">Error generating document preview</div>';
+        setPreviewContent(errorContent);
+        setEditableContent(errorContent);
+      }
+    },
+    [styleType, schemaInfo, typeDefinitions] // Add schemaInfo and typeDefinitions as dependencies
+  );
+
+  // Helper functions (make sure these are available in your component)
+  const formatTagName = (tagName: string): string => {
+    return tagName
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, (str) => str.toUpperCase())
+      .trim();
+  };
+
+  const isEmail = (text: string): boolean => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
+  };
+
+  const isPhone = (text: string): boolean => {
+    return /^[\+]?[1-9][\d]{0,15}$/.test(text.replace(/[-\s\(\)]/g, ''));
+  };
+
+  const isDate = (text: string): boolean => {
+    const dateRegex = /\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4}|\d{2}-\d{2}-\d{4}/;
+    return !isNaN(Date.parse(text)) && dateRegex.test(text);
+  };
+
+  const isNumber = (text: string): boolean => {
+    return !isNaN(Number(text)) && text.trim() !== '';
+  };
+
+  const formatDate = (dateStr: string): string => {
+    try {
+      return new Date(dateStr).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const _generateTablePreview = (xmlContent: string): string => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xmlContent, 'application/xml');
 
@@ -319,6 +984,8 @@ const XMLXSDConverter: React.FC = () => {
           node.tagName
         )}</strong></td>
       </tr>`;
+
+        console.log('Processing node:', node.tagName, 'at level', level);
 
         // Add attributes
         if (node.attributes.length > 0) {
@@ -729,37 +1396,37 @@ const XMLXSDConverter: React.FC = () => {
     return html;
   };
 
-  const generatePreview = useCallback(
-    (xmlContent: string) => {
-      try {
-        let html = '';
+  // const _generatePreview = useCallback(
+  //   (xmlContent: string) => {
+  //     try {
+  //       let html = '';
 
-        switch (styleType) {
-          case 'table':
-            html = generateTablePreview(xmlContent);
-            break;
-          case 'list':
-            html = generateListPreview(xmlContent);
-            break;
-          case 'card':
-            html = generateCardPreview(xmlContent);
-            break;
-          default:
-            html = generateDocumentPreview(xmlContent);
-            break;
-        }
+  //       switch (styleType) {
+  //         case 'table':
+  //           html = generateTablePreview(xmlContent);
+  //           break;
+  //         case 'list':
+  //           html = generateListPreview(xmlContent);
+  //           break;
+  //         case 'card':
+  //           html = generateCardPreview(xmlContent);
+  //           break;
+  //         default:
+  //           html = generateDocumentPreview(xmlContent);
+  //           break;
+  //       }
 
-        setPreviewContent(html);
-        setEditableContent(html);
-      } catch (error) {
-        const errorContent =
-          '<div class="error">Error generating document preview</div>';
-        setPreviewContent(errorContent);
-        setEditableContent(errorContent);
-      }
-    },
-    [styleType]
-  );
+  //       setPreviewContent(html);
+  //       setEditableContent(html);
+  //     } catch (error) {
+  //       const errorContent =
+  //         '<div class="error">Error generating document preview</div>';
+  //       setPreviewContent(errorContent);
+  //       setEditableContent(errorContent);
+  //     }
+  //   },
+  //   [styleType]
+  // );
 
   useEffect(() => {
     if (xmlFile && originalXmlContent) {
@@ -768,41 +1435,41 @@ const XMLXSDConverter: React.FC = () => {
   }, [styleType, generatePreview]);
 
   // Helper functions for content formatting
-  const formatTagName = (tagName: string): string => {
-    return tagName
-      .replace(/([A-Z])/g, ' $1')
-      .replace(/^./, (str) => str.toUpperCase())
-      .trim();
-  };
+  // const formatTagName = (tagName: string): string => {
+  //   return tagName
+  //     .replace(/([A-Z])/g, ' $1')
+  //     .replace(/^./, (str) => str.toUpperCase())
+  //     .trim();
+  // };
 
-  const isEmail = (text: string): boolean => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
-  };
+  // const isEmail = (text: string): boolean => {
+  //   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
+  // };
 
-  const isPhone = (text: string): boolean => {
-    return /^[\+]?[1-9][\d]{0,15}$/.test(text.replace(/[-\s\(\)]/g, ''));
-  };
+  // const isPhone = (text: string): boolean => {
+  //   return /^[\+]?[1-9][\d]{0,15}$/.test(text.replace(/[-\s\(\)]/g, ''));
+  // };
 
-  const isDate = (text: string): boolean => {
-    const dateRegex = /\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4}|\d{2}-\d{2}-\d{4}/;
-    return !isNaN(Date.parse(text)) && dateRegex.test(text);
-  };
+  // const isDate = (text: string): boolean => {
+  //   const dateRegex = /\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4}|\d{2}-\d{2}-\d{4}/;
+  //   return !isNaN(Date.parse(text)) && dateRegex.test(text);
+  // };
 
-  const isNumber = (text: string): boolean => {
-    return !isNaN(Number(text)) && text.trim() !== '';
-  };
+  // const isNumber = (text: string): boolean => {
+  //   return !isNaN(Number(text)) && text.trim() !== '';
+  // };
 
-  const formatDate = (dateStr: string): string => {
-    try {
-      return new Date(dateStr).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-    } catch {
-      return dateStr;
-    }
-  };
+  // const formatDate = (dateStr: string): string => {
+  //   try {
+  //     return new Date(dateStr).toLocaleDateString('en-US', {
+  //       year: 'numeric',
+  //       month: 'long',
+  //       day: 'numeric',
+  //     });
+  //   } catch {
+  //     return dateStr;
+  //   }
+  // };
 
   const handleEditSave = () => {
     try {
@@ -2022,6 +2689,46 @@ const XMLXSDConverter: React.FC = () => {
     align-items: flex-start;
     gap: 8px;
   }
+}
+
+.enum-dropdown {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  background: white;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.enum-dropdown:focus {
+  outline: none;
+  border-color: #3182ce;
+  box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2);
+}
+
+.editable-field {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 14px;
+  background: #f7fafc;
+}
+
+.editable-field:focus {
+  outline: none;
+  border-color: #3182ce;
+  background: white;
+  box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2);
+}
+
+.attr-field {
+  background: #fff5f5;
+}
+
+.enum-dropdown option {
+  padding: 4px;
 }
     `}</style>
 

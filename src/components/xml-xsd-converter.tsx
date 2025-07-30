@@ -44,17 +44,7 @@ const XMLXSDConverter: React.FC = () => {
 
   const [styleType, setStyleType] = useState<
     'document' | 'table' | 'list' | 'card'
-  >('document');
-
-  const [schemaInfo, setSchemaInfo] = useState<{
-    [elementName: string]: {
-      type?: string;
-      enumValues?: string[];
-      attributes?: {
-        [attrName: string]: { enumValues?: string[]; type?: string };
-      };
-    };
-  }>({});
+  >('table');
 
   // Add a new state for storing the original XML content
   const [originalXmlContent, setOriginalXmlContent] = useState<string>('');
@@ -66,6 +56,17 @@ const XMLXSDConverter: React.FC = () => {
   // Add new state for the WYSIWYG editor
   const [editorContent, setEditorContent] = useState<string>('');
   const [showWysiwygEditor, setShowWysiwygEditor] = useState(false);
+
+  const [schemaInfo, setSchemaInfo] = useState<{
+    [elementName: string]: {
+      type?: string;
+      enumValues?: string[];
+      attributes?: {
+        [attrName: string]: { enumValues?: string[]; type?: string };
+      };
+    };
+  }>({});
+  const [typeDefinitions, setTypeDefinitions] = useState<any>();
 
   // Update the handleFileUpload function to store the original content:
   const handleFileUpload = (
@@ -93,11 +94,14 @@ const XMLXSDConverter: React.FC = () => {
         setXsdFile(fileData);
         setRawXsdContent(content);
 
-        // Parse XSD schema
-        const { schemaInfo: parsedSchema } = parseXSDSchema(content);
-        setSchemaInfo(parsedSchema);
+        const { schemaInfo: parsedSchema, typeDefinitions } =
+          parseXSDSchema(content);
 
-        validateXML(content, type);
+        setSchemaInfo(parsedSchema);
+        setTypeDefinitions(typeDefinitions);
+
+        console.log('Parsed XSD Schema:', parsedSchema);
+        console.log('Type Definitions:', typeDefinitions);
       }
 
       // Basic validation
@@ -134,46 +138,21 @@ const XMLXSDConverter: React.FC = () => {
       // Get all namespaces to handle prefixed elements
       const namespaceURI = 'http://www.w3.org/2001/XMLSchema';
 
-      // Parse simple types with enumerations
-      const simpleTypes = xsdDoc.getElementsByTagNameNS(
-        namespaceURI,
-        'simpleType'
-      );
+      // ENHANCED: Parse simple types with enumerations (with better namespace handling)
+      const parseSimpleTypes = (useNamespace: boolean) => {
+        const simpleTypes = useNamespace
+          ? xsdDoc.getElementsByTagNameNS(namespaceURI, 'simpleType')
+          : xsdDoc.getElementsByTagName('simpleType');
 
-      for (let i = 0; i < simpleTypes.length; i++) {
-        const simpleType = simpleTypes[i];
-        const typeName = simpleType.getAttribute('name');
-
-        if (typeName) {
-          const enumerations = simpleType.getElementsByTagNameNS(
-            namespaceURI,
-            'enumeration'
-          );
-          const enumValues: string[] = [];
-
-          for (let j = 0; j < enumerations.length; j++) {
-            const enumValue = enumerations[j].getAttribute('value');
-            if (enumValue) {
-              enumValues.push(enumValue);
-            }
-          }
-
-          if (enumValues.length > 0) {
-            typeDefinitions[typeName] = { enumValues };
-          }
-        }
-      }
-
-      // Also try without namespace (for XSD files without proper namespace)
-      if (Object.keys(typeDefinitions).length === 0) {
-        const simpleTypesNoNS = xsdDoc.getElementsByTagName('simpleType');
-
-        for (let i = 0; i < simpleTypesNoNS.length; i++) {
-          const simpleType = simpleTypesNoNS[i];
+        for (let i = 0; i < simpleTypes.length; i++) {
+          const simpleType = simpleTypes[i];
           const typeName = simpleType.getAttribute('name');
 
           if (typeName) {
-            const enumerations = simpleType.getElementsByTagName('enumeration');
+            const enumerations = useNamespace
+              ? simpleType.getElementsByTagNameNS(namespaceURI, 'enumeration')
+              : simpleType.getElementsByTagName('enumeration');
+
             const enumValues: string[] = [];
 
             for (let j = 0; j < enumerations.length; j++) {
@@ -185,99 +164,183 @@ const XMLXSDConverter: React.FC = () => {
 
             if (enumValues.length > 0) {
               typeDefinitions[typeName] = { enumValues };
+              console.log(
+                `Found simple type: ${typeName} with values:`,
+                enumValues
+              );
             }
           }
         }
-      }
+      };
 
-      // Parse elements and their types
-      const elements = xsdDoc.getElementsByTagNameNS(namespaceURI, 'element');
+      // ENHANCED: Parse complex types that contain simple types with enumerations
+      const parseComplexTypes = (useNamespace: boolean) => {
+        const complexTypes = useNamespace
+          ? xsdDoc.getElementsByTagNameNS(namespaceURI, 'complexType')
+          : xsdDoc.getElementsByTagName('complexType');
 
-      for (let i = 0; i < elements.length; i++) {
-        const element = elements[i];
-        const elementName = element.getAttribute('name');
-        const elementType = element.getAttribute('type');
+        for (let i = 0; i < complexTypes.length; i++) {
+          const complexType = complexTypes[i];
+          const typeName = complexType.getAttribute('name');
 
-        if (elementName) {
-          schemaInfo[elementName] = {};
+          // Look for nested simple types with enumerations
+          const nestedSimpleTypes = useNamespace
+            ? complexType.getElementsByTagNameNS(namespaceURI, 'simpleType')
+            : complexType.getElementsByTagName('simpleType');
 
-          // Check if element type matches a defined simple type
-          if (elementType) {
-            // Remove namespace prefix if present (e.g., "xs:string" -> "string")
-            const cleanType = elementType.includes(':')
-              ? elementType.split(':')[1]
-              : elementType;
+          for (let j = 0; j < nestedSimpleTypes.length; j++) {
+            const simpleType = nestedSimpleTypes[j];
+            const enumerations = useNamespace
+              ? simpleType.getElementsByTagNameNS(namespaceURI, 'enumeration')
+              : simpleType.getElementsByTagName('enumeration');
 
-            if (typeDefinitions[cleanType]) {
-              schemaInfo[elementName] = { ...typeDefinitions[cleanType] };
-            } else if (typeDefinitions[elementType]) {
-              schemaInfo[elementName] = { ...typeDefinitions[elementType] };
+            const enumValues: string[] = [];
+            for (let k = 0; k < enumerations.length; k++) {
+              const enumValue = enumerations[k].getAttribute('value');
+              if (enumValue) {
+                enumValues.push(enumValue);
+              }
             }
-          }
 
-          // Check for inline enumerations
-          const inlineEnums = element.getElementsByTagNameNS(
-            namespaceURI,
-            'enumeration'
-          );
-          const enumValues: string[] = [];
-
-          for (let j = 0; j < inlineEnums.length; j++) {
-            const enumValue = inlineEnums[j].getAttribute('value');
-            if (enumValue) {
-              enumValues.push(enumValue);
+            if (enumValues.length > 0 && typeName) {
+              typeDefinitions[typeName] = { enumValues };
+              console.log(
+                `Found complex type: ${typeName} with values:`,
+                enumValues
+              );
             }
-          }
-
-          if (enumValues.length > 0) {
-            schemaInfo[elementName].enumValues = enumValues;
           }
         }
-      }
+      };
 
-      // Also try without namespace if nothing was found
-      if (Object.keys(schemaInfo).length === 0) {
-        const elementsNoNS = xsdDoc.getElementsByTagName('element');
+      // ENHANCED: Parse elements with better type resolution
+      const parseElements = (useNamespace: boolean) => {
+        const elements = useNamespace
+          ? xsdDoc.getElementsByTagNameNS(namespaceURI, 'element')
+          : xsdDoc.getElementsByTagName('element');
 
-        for (let i = 0; i < elementsNoNS.length; i++) {
-          const element = elementsNoNS[i];
+        for (let i = 0; i < elements.length; i++) {
+          const element = elements[i];
           const elementName = element.getAttribute('name');
           const elementType = element.getAttribute('type');
 
           if (elementName) {
             schemaInfo[elementName] = {};
 
+            // Check if element type matches a defined simple type
             if (elementType) {
-              const cleanType = elementType.includes(':')
-                ? elementType.split(':')[1]
-                : elementType;
+              // Handle different type formats: "xs:string", "tns:MyType", "MyType"
+              const typeVariants: string[] = [
+                elementType, // Original type
+                elementType.includes(':')
+                  ? elementType.split(':')[1]
+                  : elementType, // Remove prefix
+              ];
 
-              if (typeDefinitions[cleanType]) {
-                schemaInfo[elementName] = { ...typeDefinitions[cleanType] };
-              } else if (typeDefinitions[elementType]) {
-                schemaInfo[elementName] = { ...typeDefinitions[elementType] };
+              // Add the last part of the type if it exists
+              const lastPart = elementType.split(':').pop();
+              if (lastPart && lastPart !== elementType) {
+                typeVariants.push(lastPart);
+              }
+
+              for (const typeVariant of typeVariants) {
+                if (typeDefinitions[typeVariant]) {
+                  schemaInfo[elementName] = { ...typeDefinitions[typeVariant] };
+                  console.log(
+                    `Matched element ${elementName} to type ${typeVariant}`
+                  );
+                  break;
+                }
+              }
+
+              // Store the type reference for debugging
+              schemaInfo[elementName].type = elementType;
+            }
+
+            // ENHANCED: Check for inline enumerations (immediate child restrictions)
+            const restrictions = useNamespace
+              ? element.getElementsByTagNameNS(namespaceURI, 'restriction')
+              : element.getElementsByTagName('restriction');
+
+            for (let j = 0; j < restrictions.length; j++) {
+              const restriction = restrictions[j];
+              const inlineEnums = useNamespace
+                ? restriction.getElementsByTagNameNS(
+                    namespaceURI,
+                    'enumeration'
+                  )
+                : restriction.getElementsByTagName('enumeration');
+
+              const enumValues: string[] = [];
+              for (let k = 0; k < inlineEnums.length; k++) {
+                const enumValue = inlineEnums[k].getAttribute('value');
+                if (enumValue) {
+                  enumValues.push(enumValue);
+                }
+              }
+
+              if (enumValues.length > 0) {
+                schemaInfo[elementName].enumValues = enumValues;
+                console.log(
+                  `Found inline enums for ${elementName}:`,
+                  enumValues
+                );
               }
             }
 
-            // Check for inline enumerations
-            const inlineEnums = element.getElementsByTagName('enumeration');
-            const enumValues: string[] = [];
+            // ENHANCED: Check for nested simple types with enumerations
+            const nestedSimpleTypes = useNamespace
+              ? element.getElementsByTagNameNS(namespaceURI, 'simpleType')
+              : element.getElementsByTagName('simpleType');
 
-            for (let j = 0; j < inlineEnums.length; j++) {
-              const enumValue = inlineEnums[j].getAttribute('value');
-              if (enumValue) {
-                enumValues.push(enumValue);
+            for (let j = 0; j < nestedSimpleTypes.length; j++) {
+              const simpleType = nestedSimpleTypes[j];
+              const enumerations = useNamespace
+                ? simpleType.getElementsByTagNameNS(namespaceURI, 'enumeration')
+                : simpleType.getElementsByTagName('enumeration');
+
+              const enumValues: string[] = [];
+              for (let k = 0; k < enumerations.length; k++) {
+                const enumValue = enumerations[k].getAttribute('value');
+                if (enumValue) {
+                  enumValues.push(enumValue);
+                }
               }
-            }
 
-            if (enumValues.length > 0) {
-              schemaInfo[elementName].enumValues = enumValues;
+              if (enumValues.length > 0) {
+                schemaInfo[elementName].enumValues = enumValues;
+                console.log(
+                  `Found nested enum for ${elementName}:`,
+                  enumValues
+                );
+              }
             }
           }
         }
+      };
+
+      // Try with namespace first, then without
+      parseSimpleTypes(true);
+      parseComplexTypes(true);
+      parseElements(true);
+
+      // If nothing found, try without namespace
+      if (Object.keys(typeDefinitions).length === 0) {
+        console.log(
+          'No types found with namespace, trying without namespace...'
+        );
+        parseSimpleTypes(false);
+        parseComplexTypes(false);
       }
 
-      console.log('Parsed XSD Schema:', { schemaInfo, typeDefinitions });
+      if (Object.keys(schemaInfo).length === 0) {
+        console.log(
+          'No elements found with namespace, trying without namespace...'
+        );
+        parseElements(false);
+      }
+
+      console.log('Final parsed XSD Schema:', { schemaInfo, typeDefinitions });
       return { schemaInfo, typeDefinitions };
     } catch (error) {
       console.error('Error parsing XSD schema:', error);
@@ -417,122 +480,6 @@ const XMLXSDConverter: React.FC = () => {
 
     let html = '<div class="table-preview">';
 
-    const processChildToTableRow = (node: Element, level: number): string => {
-      let result = '';
-
-      if (node.children.length === 0) {
-        // Leaf node - create editable table row
-        const text = node.textContent?.trim() || '';
-        const elementName = node.tagName;
-
-        console.log(
-          `Checking element: ${elementName}, schemaInfo:`,
-          schemaInfo[elementName]
-        );
-
-        // Check if this element has enum values in XSD
-        const elementSchema = schemaInfo[elementName];
-        const hasEnumValues =
-          elementSchema?.enumValues && elementSchema.enumValues.length > 0;
-
-        result += `<tr class="data-row">
-      <td class="field-name">${formatTagName(node.tagName)}</td>
-      <td class="field-value">`;
-
-        if (hasEnumValues) {
-          console.log(
-            `Creating dropdown for ${elementName} with values:`,
-            elementSchema.enumValues
-          );
-
-          // Create dropdown for enum values
-          result += `<select 
-        class="enum-dropdown" 
-        data-element="${elementName}"
-        data-original-value="${text}"
-      >`;
-
-          elementSchema.enumValues!.forEach((enumValue) => {
-            const selected = enumValue === text ? 'selected' : '';
-            result += `<option value="${enumValue}" ${selected}>${enumValue}</option>`;
-          });
-
-          result += '</select>';
-        } else {
-          console.log(
-            `Creating text input for ${elementName} (no enum values found)`
-          );
-          // Regular editable field
-          result += `<input 
-        type="text" 
-        class="editable-field" 
-        value="${text}"
-        data-element="${elementName}"
-      />`;
-        }
-
-        result += '</td></tr>';
-      } else {
-        // Node with children - create nested structure
-        result += `<tr class="nested-row">
-      <td class="field-name" colspan="2"><strong>${formatTagName(
-        node.tagName
-      )}</strong></td>
-    </tr>`;
-
-        // Process children
-        Array.from(node.children).forEach((child) => {
-          result += processChildToTableRow(child as Element, level + 1);
-        });
-      }
-
-      return result;
-    };
-
-    if (doc.documentElement) {
-      html += `<h2 class="table-title">${formatTagName(
-        doc.documentElement.tagName
-      )}</h2>`;
-      html += '<table class="data-table">';
-      html += '<thead><tr><th>Field</th><th>Value</th></tr></thead>';
-      html += '<tbody>';
-
-      Array.from(doc.documentElement.children).forEach((child) => {
-        html += processChildToTableRow(child as Element, 1);
-      });
-
-      html += '</tbody></table>';
-    }
-
-    html += '</div>';
-
-    // Add JavaScript functions for updating XML
-    html += `
-    <script>
-      window.updateXMLValue = function(elementName, newValue) {
-        // This will be handled by React
-        window.dispatchEvent(new CustomEvent('xmlValueUpdate', {
-          detail: { elementName, newValue, type: 'content' }
-        }));
-      };
-      
-      window.updateXMLAttribute = function(elementName, attributeName, newValue) {
-        window.dispatchEvent(new CustomEvent('xmlValueUpdate', {
-          detail: { elementName, attributeName, newValue, type: 'attribute' }
-        }));
-      };
-    </script>
-  `;
-
-    return html;
-  };
-
-  const _generateTablePreview = (xmlContent: string): string => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xmlContent, 'application/xml');
-
-    let html = '<div class="table-preview">';
-
     const processNodeToTable = (node: Element, level: number = 0): string => {
       let result = '';
 
@@ -630,6 +577,8 @@ const XMLXSDConverter: React.FC = () => {
           node.tagName
         )}</strong></td>
       </tr>`;
+
+        console.log('Processing node:', node.tagName, 'at level', level);
 
         // Add attributes
         if (node.attributes.length > 0) {
@@ -1077,61 +1026,6 @@ const XMLXSDConverter: React.FC = () => {
       generatePreview(originalXmlContent);
     }
   }, [styleType, generatePreview]);
-
-  useEffect(() => {
-    const handleXMLUpdate = (event: CustomEvent) => {
-      const { elementName, attributeName, newValue, type } = event.detail;
-
-      if (!xmlFile || !originalXmlContent) return;
-
-      try {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(
-          originalXmlContent,
-          'application/xml'
-        );
-
-        if (type === 'content') {
-          // Update element content
-          const elements = doc.getElementsByTagName(elementName);
-          if (elements.length > 0) {
-            elements[0].textContent = newValue;
-          }
-        } else if (type === 'attribute') {
-          // Update attribute value
-          const elements = doc.getElementsByTagName(elementName);
-          if (elements.length > 0) {
-            elements[0].setAttribute(attributeName, newValue);
-          }
-        }
-
-        // Serialize back to string
-        const serializer = new XMLSerializer();
-        const updatedXML = serializer.serializeToString(doc);
-
-        // Update the XML content
-        setRawXmlContent(updatedXML);
-        setOriginalXmlContent(updatedXML);
-
-        if (xmlFile) {
-          setXmlFile({ ...xmlFile, content: updatedXML });
-        }
-
-        // Regenerate preview with new content
-        generatePreview(updatedXML);
-      } catch (error) {
-        console.error('Error updating XML:', error);
-      }
-    };
-
-    // @ts-ignore
-    window.addEventListener('xmlValueUpdate', handleXMLUpdate);
-
-    return () => {
-      // @ts-ignore
-      window.removeEventListener('xmlValueUpdate', handleXMLUpdate);
-    };
-  }, [xmlFile, originalXmlContent, generatePreview]);
 
   // Helper functions for content formatting
   const formatTagName = (tagName: string): string => {
