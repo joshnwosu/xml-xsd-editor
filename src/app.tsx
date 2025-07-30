@@ -1,10 +1,11 @@
-import XMLXSDConverter from './components/xml-xsd-converter';
+import { RouterProvider } from 'react-router-dom';
+import { router } from './lib/router';
 
 function App() {
   return (
-    <>
-      <XMLXSDConverter />
-    </>
+    <div>
+      <RouterProvider router={router} />
+    </div>
   );
 }
 
