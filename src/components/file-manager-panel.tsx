@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FileText, Code, FileX, MessageSquare } from 'lucide-react';
-import { PdfTab } from './pdf-tab';
-import { XmlTab } from './xml-tab';
-import { XsdTab } from './xsd-tab';
-import { CommentsTab } from './comments-tab';
+import { PdfTab } from './tabs/pdf-tab';
+import { XmlTab } from './tabs/xml-tab';
+import { XsdTab } from './tabs/xsd-tab';
+import { CommentsTab } from './tabs/comments-tab';
 
 export const FileManagerPanel: React.FC = () => {
   const [xmlContent, setXmlContent] = useState('');
