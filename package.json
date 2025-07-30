@@ -25,6 +25,7 @@
     "react-dom": "^19.1.0",
     "react-pdf": "^10.0.1",
     "react-quill-new": "^3.6.0",
+    "react-router-dom": "^7.7.1",
     "tailwindcss": "^4.1.11"
   },
   "devDependencies": {
