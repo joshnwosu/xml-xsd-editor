@@ -3,6 +3,7 @@ import XMLXSDConverter from '@/components/xml-xsd-converter';
 import RootLayout from '@/layout/root-layout';
 import HomePage from '@/pages/home';
 import NotFoundPage from '@/pages/not-found';
+import XMLXSDEditor from '@/pages/xml-editor';
 
 export const router = createBrowserRouter([
   {
@@ -15,6 +16,10 @@ export const router = createBrowserRouter([
       {
         path: '/xml-editor',
         element: <XMLXSDConverter />,
+      },
+      {
+        path: '/editor',
+        element: <XMLXSDEditor />,
       },
       {
         path: '*',
