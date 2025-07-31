@@ -81,7 +81,7 @@ export const EditorPanel: React.FC = () => {
 
       {/* Info Panel for XML Mode */}
       {editorMode === 'xml' && !xmlContent.trim() && (
-        <div className='p-6 text-center bg-gray-50 border-t'>
+        <div className='p-6 text-center bg-gray-50 border-t hidden'>
           <Code className='w-8 h-8 text-gray-400 mx-auto mb-2' />
           <h3 className='text-lg font-medium text-gray-900 mb-2'>
             XML Editor Ready

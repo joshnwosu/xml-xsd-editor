@@ -17,7 +17,7 @@ export class XmlWysiwygConverter {
 
       // Parse XML
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(unescapedXml, 'text/xml');
+      const xmlDoc = parser.parseFromString(unescapedXml, 'application/xml');
 
       // Check for parsing errors
       const parseError = xmlDoc.querySelector('parsererror');
@@ -25,27 +25,98 @@ export class XmlWysiwygConverter {
         return `<div class="xml-error">XML Parsing Error: ${parseError.textContent}</div>`;
       }
 
-      // Convert XML structure to WYSIWYG HTML
-      const htmlContent = this.convertXmlNodeToHtml(xmlDoc.documentElement);
+      // Convert XML structure to document-like HTML using the working approach
+      let html = '<div class="xml-document document-preview">';
 
-      return `
-        <div class="xml-document">
-          <div class="xml-header">
-            <h2 class="document-title">XML Document</h2>
-            <div class="document-info">
-              <span class="root-element">Root: &lt;${xmlDoc.documentElement.tagName}&gt;</span>
-            </div>
-          </div>
-          <div class="xml-content">
-            ${htmlContent}
-          </div>
-        </div>
-      `;
+      if (xmlDoc.documentElement) {
+        html += this.processNode(xmlDoc.documentElement, 0);
+      }
+
+      html += '</div>';
+      return html;
     } catch (error) {
       return `<div class="xml-error">Error converting XML: ${
         error instanceof Error ? error.message : 'Unknown error'
       }</div>`;
     }
+  }
+
+  /**
+   * Process XML node and convert to document-style HTML (based on your working generateDocumentPreview)
+   */
+  private static processNode(node: Element, level: number = 0): string {
+    let result = '';
+
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      // Handle different XML elements as document components
+      if (level === 0) {
+        // Root element as document title
+        result += `<h1 class="doc-title" contenteditable="true" data-xml-tag="${
+          node.tagName
+        }" data-level="${level}">${this.formatTagName(node.tagName)}</h1>`;
+      } else if (level === 1) {
+        // First level as section headers
+        result += `<h2 class="doc-section" contenteditable="true" data-xml-tag="${
+          node.tagName
+        }" data-level="${level}">${this.formatTagName(node.tagName)}</h2>`;
+      } else if (level === 2) {
+        // Second level as subsection headers
+        result += `<h3 class="doc-subsection" contenteditable="true" data-xml-tag="${
+          node.tagName
+        }" data-level="${level}">${this.formatTagName(node.tagName)}</h3>`;
+      }
+
+      // Add attributes as metadata
+      if (node.attributes.length > 0) {
+        result += '<div class="doc-metadata" contenteditable="true">';
+        for (let i = 0; i < node.attributes.length; i++) {
+          const attr = node.attributes[i];
+          result += `<span class="doc-attr" data-attr-name="${
+            attr.name
+          }" data-attr-value="${attr.value}"><strong>${this.formatTagName(
+            attr.name
+          )}:</strong> ${attr.value}</span>`;
+          if (i < node.attributes.length - 1) result += ' | ';
+        }
+        result += '</div>';
+      }
+
+      // Handle text content
+      if (
+        node.textContent &&
+        node.textContent.trim() &&
+        node.children.length === 0
+      ) {
+        const text = node.textContent.trim();
+        // Format different types of content with data attributes for reverse mapping
+        if (this.isEmail(text)) {
+          result += `<p class="doc-email" contenteditable="true" data-xml-tag="${node.tagName}" data-content="${text}" data-content-type="email"><strong>Email:</strong> <a href="mailto:${text}">${text}</a></p>`;
+        } else if (this.isPhone(text)) {
+          result += `<p class="doc-phone" contenteditable="true" data-xml-tag="${node.tagName}" data-content="${text}" data-content-type="phone"><strong>Phone:</strong> ${text}</p>`;
+        } else if (this.isDate(text)) {
+          result += `<p class="doc-date" contenteditable="true" data-xml-tag="${
+            node.tagName
+          }" data-content="${text}" data-content-type="date"><strong>Date:</strong> ${this.formatDate(
+            text
+          )}</p>`;
+        } else if (this.isNumber(text)) {
+          result += `<p class="doc-number" contenteditable="true" data-xml-tag="${node.tagName}" data-content="${text}" data-content-type="number"><strong>Value:</strong> ${text}</p>`;
+        } else if (text.length > 100) {
+          result += `<div class="doc-paragraph" contenteditable="true" data-xml-tag="${node.tagName}" data-content="${text}" data-content-type="paragraph">${text}</div>`;
+        } else {
+          result += `<p class="doc-field" contenteditable="true" data-xml-tag="${node.tagName}" data-content="${text}" data-content-type="field">${text}</p>`;
+        }
+      } else if (node.children.length > 0) {
+        // Process child elements
+        result += `<div class="doc-content" data-xml-tag="${node.tagName}" data-level="${level}">`;
+        Array.from(node.children).forEach((child) => {
+          result += this.processNode(child as Element, level + 1);
+        });
+        result += '</div>';
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -57,15 +128,14 @@ export class XmlWysiwygConverter {
       const container = document.createElement('div');
       container.innerHTML = htmlContent;
 
-      // Find the XML content area
-      const xmlContent = container.querySelector('.xml-content');
-      if (!xmlContent) {
-        throw new Error('No XML content found in WYSIWYG editor');
+      // Find the XML document container
+      const xmlDocument = container.querySelector('.xml-document');
+      if (!xmlDocument) {
+        throw new Error('No XML document found in WYSIWYG editor');
       }
 
-      // Convert HTML back to XML
-      const xmlString = this.convertHtmlToXml(xmlContent);
-
+      // Build XML from the document structure
+      const xmlString = this.buildXmlFromDocument(xmlDocument);
       return this.formatXml(xmlString);
     } catch (error) {
       throw new Error(
@@ -77,145 +147,84 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Convert XML node to HTML representation
+   * Build XML from document structure
    */
-  private static convertXmlNodeToHtml(node: Node): string {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const textContent = node.textContent?.trim();
-      if (!textContent) return '';
-
-      return `<span class="xml-text-content" contenteditable="true">${this.escapeHtml(
-        textContent
-      )}</span>`;
+  private static buildXmlFromDocument(container: Element): string {
+    // Find the root element (should be the title element)
+    const titleElement = container.querySelector('h1[data-xml-tag]');
+    if (!titleElement) {
+      throw new Error('No root XML element found');
     }
 
-    if (node.nodeType === Node.ELEMENT_NODE) {
-      const element = node as Element;
-      const tagName = element.tagName.toLowerCase();
-
-      // Create element representation
-      let html = `<div class="xml-element" data-xml-tag="${tagName}">`;
-
-      // Add element header with tag name and attributes
-      html += `<div class="xml-element-header">`;
-      html += `<span class="xml-tag-name">${tagName}</span>`;
-
-      // Add attributes
-      if (element.attributes.length > 0) {
-        html += `<div class="xml-attributes">`;
-        for (let i = 0; i < element.attributes.length; i++) {
-          const attr = element.attributes[i];
-          html += `
-            <div class="xml-attribute" data-attr-name="${attr.name}">
-              <span class="attr-name">${attr.name}</span>=
-              <span class="attr-value" contenteditable="true">"${this.escapeHtml(
-                attr.value
-              )}"</span>
-            </div>
-          `;
-        }
-        html += `</div>`;
-      }
-
-      html += `</div>`;
-
-      // Add element content
-      html += `<div class="xml-element-content">`;
-
-      // Process child nodes
-      const children = Array.from(node.childNodes);
-      if (children.length === 0) {
-        html += `<span class="xml-empty-element">Empty element</span>`;
-      } else {
-        // Check if element contains only text
-        const hasOnlyText = children.every(
-          (child) => child.nodeType === Node.TEXT_NODE
-        );
-
-        if (hasOnlyText) {
-          const textContent = node.textContent?.trim();
-          if (textContent) {
-            html += `<div class="xml-text-only" contenteditable="true">${this.escapeHtml(
-              textContent
-            )}</div>`;
-          }
-        } else {
-          children.forEach((child) => {
-            html += this.convertXmlNodeToHtml(child);
-          });
-        }
-      }
-
-      html += `</div></div>`;
-
-      return html;
+    const rootTag = titleElement.getAttribute('data-xml-tag');
+    if (!rootTag) {
+      throw new Error('Missing root XML tag name');
     }
 
-    return '';
+    // Build the complete XML structure
+    return this.buildXmlElement(container, rootTag, 0);
   }
 
   /**
-   * Convert HTML back to XML
+   * Build XML element recursively
    */
-  private static convertHtmlToXml(htmlElement: Element): string {
-    const xmlElements = htmlElement.querySelectorAll('.xml-element');
-    if (xmlElements.length === 0) {
-      throw new Error('No XML elements found');
-    }
-
-    // Find root element
-    const rootElement = xmlElements[0];
-    return this.convertHtmlElementToXml(rootElement);
-  }
-
-  /**
-   * Convert individual HTML element back to XML
-   */
-  private static convertHtmlElementToXml(htmlElement: Element): string {
-    const tagName = htmlElement.getAttribute('data-xml-tag');
-    if (!tagName) {
-      throw new Error('Missing XML tag name');
-    }
-
+  private static buildXmlElement(
+    container: Element,
+    tagName: string,
+    level: number
+  ): string {
     let xml = `<${tagName}`;
 
-    // Add attributes
-    const attributes = htmlElement.querySelectorAll('.xml-attribute');
-    attributes.forEach((attr) => {
-      const attrName = attr.getAttribute('data-attr-name');
-      const attrValueElement = attr.querySelector('.attr-value');
-      const attrValue = attrValueElement?.textContent?.replace(/"/g, '') || '';
-
-      if (attrName) {
+    // Find and add attributes for this level
+    const attributesElements = container.querySelectorAll(
+      `[data-xml-tag="${tagName}"] .doc-metadata .doc-attr`
+    );
+    attributesElements.forEach((attrElement) => {
+      const attrName = attrElement.getAttribute('data-attr-name');
+      const attrValue = attrElement.getAttribute('data-attr-value');
+      if (attrName && attrValue) {
         xml += ` ${attrName}="${this.escapeXmlAttribute(attrValue)}"`;
       }
     });
 
-    // Check for content
-    const contentDiv = htmlElement.querySelector('.xml-element-content');
-    if (!contentDiv) {
-      xml += '/>';
-      return xml;
-    }
+    // Find content elements for this tag
+    const contentElements = container.querySelectorAll(
+      `[data-xml-tag="${tagName}"][data-content]`
+    );
+    const childContainers = container.querySelectorAll(
+      `[data-xml-tag="${tagName}"] .doc-content`
+    );
 
-    // Check if it's a text-only element
-    const textOnlyDiv = contentDiv.querySelector('.xml-text-only');
-    if (textOnlyDiv) {
-      const textContent = textOnlyDiv.textContent || '';
-      xml += `>${this.escapeXmlContent(textContent)}</${tagName}>`;
-      return xml;
-    }
-
-    // Check for nested elements
-    const nestedElements = contentDiv.querySelectorAll(':scope > .xml-element');
-    if (nestedElements.length > 0) {
+    if (contentElements.length > 0) {
+      // Has text content
       xml += '>';
-      nestedElements.forEach((nestedElement) => {
-        xml += this.convertHtmlElementToXml(nestedElement);
+      contentElements.forEach((contentElement) => {
+        const content =
+          contentElement.getAttribute('data-content') ||
+          contentElement.textContent?.trim() ||
+          '';
+        xml += this.escapeXmlContent(content);
       });
       xml += `</${tagName}>`;
+    } else if (childContainers.length > 0) {
+      // Has child elements
+      xml += '>';
+
+      // Process child elements
+      const processedTags = new Set<string>();
+      childContainers.forEach((childContainer) => {
+        const childElements = childContainer.querySelectorAll('[data-xml-tag]');
+        childElements.forEach((childElement) => {
+          const childTag = childElement.getAttribute('data-xml-tag');
+          if (childTag && !processedTags.has(childTag)) {
+            processedTags.add(childTag);
+            xml += this.buildXmlElement(container, childTag, level + 1);
+          }
+        });
+      });
+
+      xml += `</${tagName}>`;
     } else {
-      // Empty element
       xml += '/>';
     }
 
@@ -223,7 +232,45 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Utility functions
+   * Utility functions for content type detection
+   */
+  private static isEmail(text: string): boolean {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(text);
+  }
+
+  private static isPhone(text: string): boolean {
+    const phoneRegex = /^[\+]?[\d\s\-\(\)]{10,}$/;
+    return phoneRegex.test(text);
+  }
+
+  private static isDate(text: string): boolean {
+    return !isNaN(Date.parse(text)) && text.length > 6;
+  }
+
+  private static isNumber(text: string): boolean {
+    return !isNaN(Number(text)) && text.trim() !== '';
+  }
+
+  private static formatTagName(tagName: string): string {
+    return tagName
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, (str) => str.toUpperCase())
+      .replace(/_/g, ' ')
+      .replace(/-/g, ' ');
+  }
+
+  private static formatDate(dateString: string): string {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString();
+    } catch {
+      return dateString;
+    }
+  }
+
+  /**
+   * Utility functions for escaping/unescaping
    */
   private static unescapeHTML(str: string): string {
     return str
