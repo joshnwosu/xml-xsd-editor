@@ -281,14 +281,14 @@ export class XmlWysiwygConverter {
       .replace(/&#x27;/g, "'");
   }
 
-  private static escapeHtml(str: string): string {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#x27;');
-  }
+  // private static escapeHtml(str: string): string {
+  //   return str
+  //     .replace(/&/g, '&amp;')
+  //     .replace(/</g, '&lt;')
+  //     .replace(/>/g, '&gt;')
+  //     .replace(/"/g, '&quot;')
+  //     .replace(/'/g, '&#x27;');
+  // }
 
   private static escapeXmlContent(str: string): string {
     return str
