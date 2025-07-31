@@ -12,7 +12,7 @@ interface FileState {
   importFile: (fileType: 'xml' | 'xsd') => void;
 }
 
-export const useFileStore = create<FileState>((set, get) => ({
+export const useFileStore = create<FileState>((set) => ({
   xmlContent: '',
   xsdContent: '',
   pdfFile: null,

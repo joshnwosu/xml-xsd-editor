@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { FileText, Code, FileX, MessageSquare } from 'lucide-react';
 import { PdfTab } from './tabs/pdf-tab';
 import { XmlTab } from './tabs/xml-tab';
@@ -8,11 +8,6 @@ import { CustomTabs } from './tabs/custom-tab';
 import { useFileStore } from '@/store/file-store';
 
 export const FileManagerPanel: React.FC = () => {
-  // const [xmlContent, setXmlContent] = useState('');
-  // const [xsdContent, setXsdContent] = useState('');
-  // const [pdfFile, setPdfFile] = useState<File | null>(null);
-  // const [activeTab, setActiveTab] = useState('pdf');
-
   const {
     xmlContent,
     xsdContent,
