@@ -57,7 +57,7 @@ export const XmlWysiwygEditor: React.FC = () => {
           <div class="no-xml-content">
             <div style="text-align: center; padding: rem; color: #666;">
               <div style="font-size: 3rem; margin-bottom: 1rem;">📄</div>
-              <h3>No XML Content</h3>
+              <p>No XML Content</p>
               <p>Load an XML file to start editing in WYSIWYG mode</p>
             </div>
           </div>
@@ -253,7 +253,7 @@ export const XmlWysiwygEditor: React.FC = () => {
 
       {/* Main editor area with document-like styling */}
       <div className='flex-1 overflow-auto bg-gray-100 p-8'>
-        <div className='mx-auto bg-white rounded-lg'>
+        <div className='max-w-4xl mx-auto bg-white rounded-lg min-h-full'>
           {viewMode === 'wysiwyg' ? (
             <div
               ref={editorRef}
@@ -264,7 +264,7 @@ export const XmlWysiwygEditor: React.FC = () => {
               onMouseUp={updateActiveFormats}
               onKeyUp={updateActiveFormats}
               style={{
-                minHeight: '400px',
+                // minHeight: '400px',
                 padding: '4rem 3rem',
                 fontFamily: 'inherit',
                 fontSize: '16px',
@@ -299,7 +299,7 @@ export const XmlWysiwygEditor: React.FC = () => {
         /* Document container styling */
         .xml-document {
           max-width: none;
-          font-family: "Times New Roman", Times, serif;
+          font-family: sans-serif;
           line-height: 1.6;
           color: #1a1a1a;
           background: white;
@@ -324,7 +324,7 @@ export const XmlWysiwygEditor: React.FC = () => {
         /* Headings */
         .doc-heading,
         h1, h2, h3, h4, h5, h6 {
-          font-family: "Times New Roman", Times, serif;
+          font-family: sans-serif;
           font-weight: bold;
           color: #111827;
           margin: 2rem 0 1rem 0;
@@ -455,7 +455,7 @@ export const XmlWysiwygEditor: React.FC = () => {
           border: none;
           outline: none;
           padding: 0;
-          font-family: "Times New Roman", Times, serif;
+          font-family: sans-serif;
         }
         
         .doc-paragraph:focus {
