@@ -1,9 +1,10 @@
 import React from 'react';
-import { FileText, Code, FileX, MessageSquare } from 'lucide-react';
+import { FileText, Code, FileX, MessageSquare, FileCheck } from 'lucide-react';
 import { PdfTab } from './tabs/pdf-tab';
 import { XmlTab } from './tabs/xml-tab';
 import { XsdTab } from './tabs/xsd-tab';
 import { CommentsTab } from './tabs/comments-tab';
+import { ValidationPanel } from './validation-panel';
 import { CustomTabs } from './tabs/custom-tab';
 import { useFileStore } from '@/store/file-store';
 
@@ -20,13 +21,22 @@ export const FileManagerPanel: React.FC = () => {
   } = useFileStore();
 
   const tabs = [
-    { id: 'pdf', label: 'PDF', icon: <FileText className='w-4 h-4' /> },
-    { id: 'xml', label: 'XML', icon: <Code className='w-4 h-4' /> },
-    { id: 'xsd', label: 'XSD', icon: <FileX className='w-4 h-4' /> },
+    {
+      id: 'pdf',
+      label: 'PDF',
+      icon: <FileText className='w-4 h-4 stroke-1' />,
+    },
+    { id: 'xml', label: 'XML', icon: <Code className='w-4 h-4 stroke-1' /> },
+    { id: 'xsd', label: 'XSD', icon: <FileX className='w-4 h-4 stroke-1' /> },
+    {
+      id: 'validation',
+      label: 'Validation',
+      icon: <FileCheck className='w-4 h-4 stroke-1' />,
+    },
     {
       id: 'comments',
       label: 'Comments',
-      icon: <MessageSquare className='w-4 h-4' />,
+      icon: <MessageSquare className='w-4 h-4 stroke-1' />,
     },
   ];
 
@@ -83,6 +93,12 @@ export const FileManagerPanel: React.FC = () => {
             xsdContent={xsdContent}
             onFileUpload={(e) => handleFileUpload(e, 'xsd')}
           />
+        );
+      case 'validation':
+        return (
+          <div className='p-4 h-full overflow-auto'>
+            <ValidationPanel />
+          </div>
         );
       case 'comments':
         return <CommentsTab />;
