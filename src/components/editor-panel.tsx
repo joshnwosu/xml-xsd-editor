@@ -40,9 +40,9 @@ export const EditorPanel: React.FC = () => {
   ];
 
   return (
-    <div className='w-full h-full flex flex-col overflow-hidden bg-white border rounded-lg'>
+    <div className='w-full h-full flex flex-col overflow-hidden bg-white'>
       {/* Editor Mode Selector */}
-      <div className='flex items-center justify-between p-3 border-b bg-gray-50'>
+      <div className='flex items-center justify-between p-2 pr-4 bg-gray-50'>
         <div className='flex items-center space-x-1'>
           {modes.map((mode) => (
             <Button
@@ -65,8 +65,8 @@ export const EditorPanel: React.FC = () => {
         </div>
 
         <div className='flex items-center space-x-2'>
-          <Edit3 className='w-4 h-4 text-gray-400' />
-          <span className='text-sm text-gray-600'>
+          <Edit3 className='w-4 h-4 text-muted-foreground' />
+          <span className='text-sm text-muted-foreground'>
             {editorMode === 'document'
               ? 'Rich Text Editor'
               : 'XML WYSIWYG Editor'}

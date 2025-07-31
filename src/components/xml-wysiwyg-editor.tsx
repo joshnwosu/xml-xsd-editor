@@ -185,7 +185,7 @@ export const XmlWysiwygEditor: React.FC = () => {
       )}
 
       {/* Simplified header toolbar */}
-      <div className='flex items-center justify-between p-4 bg-white border-b shadow-sm'>
+      <div className='flex items-center justify-between py-2 px-4 bg-white border-b'>
         <div className='flex items-center space-x-3'>
           <span className='font-medium text-gray-900'>XML Document Editor</span>
           {hasChanges && (
@@ -253,7 +253,7 @@ export const XmlWysiwygEditor: React.FC = () => {
 
       {/* Main editor area with document-like styling */}
       <div className='flex-1 overflow-auto bg-gray-100 p-8'>
-        <div className='max-w-4xl mx-auto bg-white rounded-lg'>
+        <div className='mx-auto bg-white rounded-lg'>
           {viewMode === 'wysiwyg' ? (
             <div
               ref={editorRef}
