@@ -32,7 +32,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   activeFormats,
   onCommand,
   onInsertLink,
-  onInsertImage,
+  // onInsertImage,
   onImageUpload,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
