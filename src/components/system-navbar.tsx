@@ -6,10 +6,21 @@ import {
   MenubarItem,
   Menubar,
 } from '@/components/ui/menubar';
+import { useFileStore } from '@/store/file-store';
 
 export const SystemNavBar: React.FC = () => {
+  const importFile = useFileStore((state) => state.importFile);
+
+  const handleImportXml = () => {
+    importFile('xml');
+  };
+
+  const handleImportXsd = () => {
+    importFile('xsd');
+  };
+
   return (
-    <div className='bg-white border-b shadow-sm'>
+    <div className='bg-white'>
       <Menubar className='border-none bg-transparent'>
         <MenubarMenu>
           <MenubarTrigger className='cursor-pointer'>File</MenubarTrigger>
@@ -48,6 +59,14 @@ export const SystemNavBar: React.FC = () => {
             <MenubarItem>Validate XML</MenubarItem>
             <MenubarItem>Format Code</MenubarItem>
             <MenubarItem>Settings</MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+
+        <MenubarMenu>
+          <MenubarTrigger className='cursor-pointer'>Import</MenubarTrigger>
+          <MenubarContent>
+            <MenubarItem onClick={handleImportXml}>XML</MenubarItem>
+            <MenubarItem onClick={handleImportXsd}>XSD</MenubarItem>
           </MenubarContent>
         </MenubarMenu>
 
