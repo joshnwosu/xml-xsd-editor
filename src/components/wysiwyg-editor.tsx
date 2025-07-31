@@ -367,7 +367,7 @@ export default function WysiwygEditor() {
   return (
     <div className='w-full h-full flex flex-col overflow-hidden bg-white'>
       {/* Toolbar */}
-      <div className='flex flex-wrap gap-1 p-2 bg-gray-100 items-center'>
+      <div className='flex flex-wrap gap-1 p-1 bg-gray-100 items-center'>
         {/* Undo/Redo */}
         <ToolbarButton
           onClick={() => execCommand('undo')}
