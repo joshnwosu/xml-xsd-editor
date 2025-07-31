@@ -1,31 +1,26 @@
 import React, { useRef, useEffect } from 'react';
 import Prism from 'prismjs';
-import 'prismjs/themes/prism.css'; // You can choose different themes
+// Import only the base CSS - we'll handle themes dynamically
 import 'prismjs/components/prism-xml-doc';
 import 'prismjs/components/prism-markup-templating';
-
 import 'prismjs/plugins/line-numbers/prism-line-numbers.css';
 import 'prismjs/plugins/line-numbers/prism-line-numbers';
-
-// Optional: Import additional themes
-import 'prismjs/themes/prism-dark.css';
-import 'prismjs/themes/prism-tomorrow.css';
-import 'prismjs/themes/prism-okaidia.css';
 
 interface CodeViewerProps {
   code: string;
   language: 'xml' | 'xsd';
-  theme?: 'default' | 'dark' | 'tomorrow' | 'okaidia';
-  wrapText?: boolean; // New prop for text wrapping
+  theme?: 'white' | 'light' | 'dark' | 'tomorrow' | 'okaidia';
+  wrapText?: boolean;
 }
 
 export const CodeViewer: React.FC<CodeViewerProps> = ({
   code,
   language,
-  theme = 'default',
-  wrapText = true, // Default to wrapping enabled
+  theme = 'white',
+  wrapText = false,
 }) => {
   const codeRef = useRef<HTMLElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (codeRef.current) {
@@ -36,7 +31,6 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
       codeRef.current.textContent = decodedCode;
 
       // Apply PrismJS highlighting
-      // Both XML and XSD use XML syntax highlighting
       Prism.highlightElement(codeRef.current);
     }
   }, [code, language]);
@@ -48,79 +42,205 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
     return textarea.value;
   };
 
-  // Apply theme classes
-  const getThemeClass = () => {
+  // Get theme-specific colors
+  const getThemeColors = () => {
     switch (theme) {
+      case 'white':
+        return {
+          background: '#ffffff',
+          color: '#24292e',
+          scrollbarTrack: '#f6f8fa',
+          scrollbarThumb: '#d1d5da',
+          scrollbarThumbHover: '#959da5',
+          lineNumberBorder: '#e1e4e8',
+          lineNumberColor: '#6a737d',
+        };
+      case 'light':
+        return {
+          background: '#f5f2f0',
+          color: '#333',
+          scrollbarTrack: '#f1f5f9',
+          scrollbarThumb: '#cbd5e0',
+          scrollbarThumbHover: '#a0aec0',
+          lineNumberBorder: '#e5e7eb',
+          lineNumberColor: '#6b7280',
+        };
       case 'dark':
-        return 'prism-dark';
+        return {
+          background: '#1e1e1e',
+          color: '#d4d4d4',
+          scrollbarTrack: '#2d3748',
+          scrollbarThumb: '#4a5568',
+          scrollbarThumbHover: '#718096',
+          lineNumberBorder: '#555',
+          lineNumberColor: '#999',
+        };
       case 'tomorrow':
-        return 'prism-tomorrow';
+        return {
+          background: '#2d2d2d',
+          color: '#cccccc',
+          scrollbarTrack: '#3c3c3c',
+          scrollbarThumb: '#555555',
+          scrollbarThumbHover: '#777777',
+          lineNumberBorder: '#666',
+          lineNumberColor: '#999',
+        };
       case 'okaidia':
-        return 'prism-okaidia';
+        return {
+          background: '#272822',
+          color: '#f8f8f2',
+          scrollbarTrack: '#3e3d32',
+          scrollbarThumb: '#75715e',
+          scrollbarThumbHover: '#8a8a8a',
+          lineNumberBorder: '#75715e',
+          lineNumberColor: '#75715e',
+        };
       default:
-        return ''; // Default theme (white background)
+        return {
+          background: '#ffffff',
+          color: '#24292e',
+          scrollbarTrack: '#f6f8fa',
+          scrollbarThumb: '#d1d5da',
+          scrollbarThumbHover: '#959da5',
+          lineNumberBorder: '#e1e4e8',
+          lineNumberColor: '#6a737d',
+        };
     }
   };
 
-  const customScrollbarStyles = `
+  const themeColors = getThemeColors();
+
+  const dynamicStyles = `
+    .code-viewer-${theme} {
+      background: ${themeColors.background} !important;
+      color: ${themeColors.color} !important;
+    }
+
+    .code-viewer-${theme} pre {
+      background: ${themeColors.background} !important;
+      color: ${themeColors.color} !important;
+    }
+
+    .code-viewer-${theme} code {
+      background: ${themeColors.background} !important;
+      color: ${themeColors.color} !important;
+    }
+
     /* Custom scrollbar for webkit browsers */
-    .custom-scrollbar::-webkit-scrollbar {
+    .code-viewer-${theme} .custom-scrollbar::-webkit-scrollbar {
       width: 12px;
       height: 12px;
     }
 
-    .custom-scrollbar::-webkit-scrollbar-track {
-      background: ${
-        theme === 'dark' || theme === 'okaidia' ? '#2d3748' : '#f1f5f9'
-      };
+    .code-viewer-${theme} .custom-scrollbar::-webkit-scrollbar-track {
+      background: ${themeColors.scrollbarTrack};
       border-radius: 6px;
     }
 
-    .custom-scrollbar::-webkit-scrollbar-thumb {
-      background: ${
-        theme === 'dark' || theme === 'okaidia' ? '#4a5568' : '#cbd5e0'
-      };
+    .code-viewer-${theme} .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: ${themeColors.scrollbarThumb};
       border-radius: 6px;
-      border: 2px solid ${
-        theme === 'dark' || theme === 'okaidia' ? '#2d3748' : '#f1f5f9'
-      };
+      border: 2px solid ${themeColors.scrollbarTrack};
     }
 
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-      background: ${
-        theme === 'dark' || theme === 'okaidia' ? '#718096' : '#a0aec0'
-      };
+    .code-viewer-${theme} .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: ${themeColors.scrollbarThumbHover};
     }
 
-    .custom-scrollbar::-webkit-scrollbar-corner {
-      background: ${
-        theme === 'dark' || theme === 'okaidia' ? '#2d3748' : '#f1f5f9'
-      };
+    .code-viewer-${theme} .custom-scrollbar::-webkit-scrollbar-corner {
+      background: ${themeColors.scrollbarTrack};
     }
 
     /* For Firefox */
-    .custom-scrollbar {
+    .code-viewer-${theme} .custom-scrollbar {
       scrollbar-width: thin;
-      scrollbar-color: ${
-        theme === 'dark' || theme === 'okaidia'
-          ? '#4a5568 #2d3748'
-          : '#cbd5e0 #f1f5f9'
-      };
+      scrollbar-color: ${themeColors.scrollbarThumb} ${
+    themeColors.scrollbarTrack
+  };
     }
 
-    /* Smooth scrolling */
-    .custom-scrollbar {
-      scroll-behavior: smooth;
+    /* Line numbers styling */
+    .code-viewer-${theme} .line-numbers-rows {
+      border-right: 1px solid ${themeColors.lineNumberBorder};
     }
 
-    /* Optional: Hide scrollbar but keep functionality */
-    .hide-scrollbar {
-      -ms-overflow-style: none;  /* Internet Explorer 10+ */
-      scrollbar-width: none;  /* Firefox */
+    .code-viewer-${theme} .line-numbers-rows > span:before {
+      color: ${themeColors.lineNumberColor} !important;
     }
-    
-    .hide-scrollbar::-webkit-scrollbar { 
-      display: none;  /* Safari and Chrome */
+
+    /* Syntax highlighting for each theme */
+    .code-viewer-${theme} .token.comment,
+    .code-viewer-${theme} .token.prolog,
+    .code-viewer-${theme} .token.doctype,
+    .code-viewer-${theme} .token.cdata {
+      color: ${
+        theme === 'white'
+          ? '#6a737d'
+          : theme === 'light'
+          ? '#708090'
+          : theme === 'dark'
+          ? '#6a9955'
+          : theme === 'tomorrow'
+          ? '#969896'
+          : '#75715e'
+      } !important;
+    }
+
+    .code-viewer-${theme} .token.punctuation {
+      color: ${
+        theme === 'white'
+          ? '#24292e'
+          : theme === 'light'
+          ? '#999'
+          : theme === 'dark'
+          ? '#d4d4d4'
+          : theme === 'tomorrow'
+          ? '#cccccc'
+          : '#f8f8f2'
+      } !important;
+    }
+
+    .code-viewer-${theme} .token.tag {
+      color: ${
+        theme === 'white'
+          ? '#22863a'
+          : theme === 'light'
+          ? '#905'
+          : theme === 'dark'
+          ? '#569cd6'
+          : theme === 'tomorrow'
+          ? '#cc7832'
+          : '#f92672'
+      } !important;
+    }
+
+    .code-viewer-${theme} .token.attr-name {
+      color: ${
+        theme === 'white'
+          ? '#6f42c1'
+          : theme === 'light'
+          ? '#690'
+          : theme === 'dark'
+          ? '#9cdcfe'
+          : theme === 'tomorrow'
+          ? '#de935f'
+          : '#a6e22e'
+      } !important;
+    }
+
+    .code-viewer-${theme} .token.attr-value,
+    .code-viewer-${theme} .token.string {
+      color: ${
+        theme === 'white'
+          ? '#032f62'
+          : theme === 'light'
+          ? '#07a'
+          : theme === 'dark'
+          ? '#ce9178'
+          : theme === 'tomorrow'
+          ? '#b5bd68'
+          : '#e6db74'
+      } !important;
     }
 
     /* Text wrapping styles */
@@ -142,40 +262,14 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
     .line-numbers .code-wrap {
       padding-left: 3.8em !important;
     }
-
-    /* Adjust line number positioning for wrapped text */
-    .line-numbers-rows {
-      pointer-events: none;
-      position: absolute;
-      left: 0;
-      font-size: 100%;
-      width: 3em;
-      letter-spacing: -1px;
-      border-right: 1px solid #999;
-      user-select: none;
-      counter-reset: linenumber;
-    }
-
-    .line-numbers-rows > span {
-      pointer-events: none;
-      display: block;
-      counter-increment: linenumber;
-    }
-
-    .line-numbers-rows > span:before {
-      content: counter(linenumber);
-      color: #999;
-      display: block;
-      padding-right: 0.8em;
-      text-align: right;
-    }
   `;
 
   return (
     <>
-      <style>{customScrollbarStyles}</style>
+      <style>{dynamicStyles}</style>
       <div
-        className={`code-viewer ${getThemeClass()} line-numbers !p-0 !pt-0 !m-0 h-full overflow-hidden !rounded-none`}
+        ref={containerRef}
+        className={`code-viewer code-viewer-${theme} line-numbers !p-0 !pt-0 !m-0 h-full overflow-hidden !rounded-none`}
       >
         <pre
           className={`custom-scrollbar overflow-auto h-full !text-sm !border-0 !m-0 !rounded-none ${
@@ -186,7 +280,7 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
             ref={codeRef}
             className={`language-xml ${
               wrapText ? 'code-wrap' : 'code-no-wrap'
-            }`} // Use 'xml' for both XML and XSD
+            }`}
           >
             {code}
           </code>

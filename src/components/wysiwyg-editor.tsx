@@ -544,7 +544,7 @@ export default function WysiwygEditor() {
       />
 
       {/* Status Bar */}
-      <div className='flex justify-between items-center px-4 py-2 bg-gray-50 border-t text-sm text-gray-600'>
+      <div className='flex justify-between items-center px-4 py-2 bg-gray-100 text-sm text-gray-600'>
         <div className='flex gap-4'>
           <span>Words: {wordCount}</span>
           <span>Characters: {charCount}</span>
