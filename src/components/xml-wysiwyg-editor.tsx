@@ -1,15 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import {
-  Save,
-  RefreshCw,
-  Eye,
-  Code,
-  AlertTriangle,
-  FileCode,
-  Edit3,
-} from 'lucide-react';
-import { EditorToolbar } from '@/components/toolbar/editor-toolbar';
+import { Save, RefreshCw, Code, AlertTriangle, Edit3 } from 'lucide-react';
+// import { EditorToolbar } from '@/components/toolbar/editor-toolbar';
 import { StatusBar } from '@/components/editor/status-bar';
 import { useEditorCommands } from '@/hooks/use-editor-commands';
 import { XmlWysiwygConverter } from '@/utils/xml-wysiwyg-converter';
@@ -17,7 +9,7 @@ import { useFileStore } from '@/store/file-store';
 
 export const XmlWysiwygEditor: React.FC = () => {
   const { xmlContent, setXmlContent } = useFileStore();
-  const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set());
+  const [_, setActiveFormats] = useState<Set<string>>(new Set());
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
   const [viewMode, setViewMode] = useState<'wysiwyg' | 'xml'>('wysiwyg');
@@ -44,7 +36,7 @@ export const XmlWysiwygEditor: React.FC = () => {
     }
   };
 
-  const { execCommand, insertLink, handleImageUpload } = useEditorCommands(
+  const { execCommand } = useEditorCommands(
     editorRef,
     updateActiveFormats,
     updateCounts
