@@ -75,7 +75,7 @@ export function ValidationPanel() {
   };
 
   return (
-    <div className='bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-6'>
+    <div className='p-6 space-y-6'>
       {/* Header */}
       <div className='flex items-center justify-between pb-4 border-b border-slate-100'>
         <div className='flex items-center space-x-3'>
@@ -83,9 +83,9 @@ export function ValidationPanel() {
             <Shield className='w-5 h-5 text-blue-600' />
           </div>
           <div>
-            <h3 className='text-lg font-semibold text-slate-900'>
+            <p className='text-lg font-semibold text-slate-900'>
               XML Schema Validation
-            </h3>
+            </p>
             <p className='text-sm text-slate-500 mt-0.5'>
               Validate XML documents against XSD schema
             </p>
@@ -112,7 +112,7 @@ export function ValidationPanel() {
       {/* File Status Cards */}
       <div className='grid grid-cols-2 gap-4'>
         <div
-          className={`p-4 rounded-lg border-2 transition-all ${
+          className={`p-4 rounded-lg border transition-all ${
             xmlContent.trim()
               ? 'border-emerald-200 bg-emerald-50'
               : 'border-slate-200 bg-slate-50'
@@ -138,7 +138,7 @@ export function ValidationPanel() {
         </div>
 
         <div
-          className={`p-4 rounded-lg border-2 transition-all ${
+          className={`p-4 rounded-lg border transition-all ${
             xsdContent.trim()
               ? 'border-emerald-200 bg-emerald-50'
               : 'border-slate-200 bg-slate-50'
@@ -169,7 +169,7 @@ export function ValidationPanel() {
         <Button
           onClick={handleValidate}
           disabled={!canValidate || isValidating}
-          className='flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 px-6 py-2.5 font-medium text-white'
+          className='flex items-center space-x-2 px-6 py-2.5 font-medium text-white'
           size='lg'
         >
           {isValidating ? (

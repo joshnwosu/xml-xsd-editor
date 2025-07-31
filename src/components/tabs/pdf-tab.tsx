@@ -9,8 +9,12 @@ interface PdfTabProps {
 
 export const PdfTab: React.FC<PdfTabProps> = ({ pdfFile, onFileUpload }) => {
   return (
-    <div className='space-y-4'>
-      <div className='border-2 border-dashed border-gray-300 rounded-lg p-6 text-center'>
+    <div className='space-y-4 p-8'>
+      <div className='text-center py-8'>
+        <FileText className='mx-auto h-12 w-12 text-gray-400 mb-4 stroke-1' />
+        <p className='text-muted-foreground'>PDF feature coming soon...</p>
+      </div>
+      <div className='border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hidden'>
         <FileText className='mx-auto h-12 w-12 text-gray-400 mb-4' />
         <p className='text-sm text-gray-600 mb-4'>
           Upload a PDF file to view and process
