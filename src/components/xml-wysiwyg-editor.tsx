@@ -264,9 +264,9 @@ export const XmlWysiwygEditor: React.FC = () => {
               onMouseUp={updateActiveFormats}
               onKeyUp={updateActiveFormats}
               style={{
-                minHeight: '700px',
+                minHeight: '400px',
                 padding: '4rem 3rem',
-                fontFamily: '"Times New Roman", Times, san-serif',
+                fontFamily: 'inherit',
                 fontSize: '16px',
                 lineHeight: '1.6',
                 backgroundColor: 'white',
