@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import Prism from 'prismjs';
 // Import only the base CSS - we'll handle themes dynamically
 import 'prismjs/components/prism-xml-doc';
@@ -22,28 +22,22 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
   const codeRef = useRef<HTMLElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (codeRef.current) {
-      // Decode HTML entities if present
-      const decodedCode = decodeHtmlEntities(code);
+  // Memoize decoded code to avoid recalculating on every render
+  const decodedCode = useMemo(() => {
+    if (!code) return '';
 
-      // Set the code content
-      codeRef.current.textContent = decodedCode;
+    // Function to decode HTML entities
+    const decodeHtmlEntities = (text: string): string => {
+      const textarea = document.createElement('textarea');
+      textarea.innerHTML = text;
+      return textarea.value;
+    };
 
-      // Apply PrismJS highlighting
-      Prism.highlightElement(codeRef.current);
-    }
-  }, [code, language]);
+    return decodeHtmlEntities(code);
+  }, [code]);
 
-  // Function to decode HTML entities
-  const decodeHtmlEntities = (text: string): string => {
-    const textarea = document.createElement('textarea');
-    textarea.innerHTML = text;
-    return textarea.value;
-  };
-
-  // Get theme-specific colors
-  const getThemeColors = () => {
+  // Memoize theme colors to avoid recalculating
+  const themeColors = useMemo(() => {
     switch (theme) {
       case 'white':
         return {
@@ -106,11 +100,47 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
           lineNumberColor: '#6a737d',
         };
     }
-  };
+  }, [theme]);
 
-  const themeColors = getThemeColors();
+  // Memoize syntax highlighting colors
+  const syntaxColors = useMemo(() => {
+    const getColor = (colors: string[]) =>
+      colors[
+        theme === 'white'
+          ? 0
+          : theme === 'light'
+          ? 1
+          : theme === 'dark'
+          ? 2
+          : theme === 'tomorrow'
+          ? 3
+          : 4
+      ];
 
-  const dynamicStyles = `
+    return {
+      comment: getColor([
+        '#6a737d',
+        '#708090',
+        '#6a9955',
+        '#969896',
+        '#75715e',
+      ]),
+      punctuation: getColor([
+        '#24292e',
+        '#999',
+        '#d4d4d4',
+        '#cccccc',
+        '#f8f8f2',
+      ]),
+      tag: getColor(['#22863a', '#905', '#569cd6', '#cc7832', '#f92672']),
+      attrName: getColor(['#6f42c1', '#690', '#9cdcfe', '#de935f', '#a6e22e']),
+      attrValue: getColor(['#032f62', '#07a', '#ce9178', '#b5bd68', '#e6db74']),
+    };
+  }, [theme]);
+
+  // Memoize dynamic styles
+  const dynamicStyles = useMemo(
+    () => `
     .code-viewer-${theme} {
       background: ${themeColors.background} !important;
       color: ${themeColors.color} !important;
@@ -154,9 +184,7 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
     /* For Firefox */
     .code-viewer-${theme} .custom-scrollbar {
       scrollbar-width: thin;
-      scrollbar-color: ${themeColors.scrollbarThumb} ${
-    themeColors.scrollbarTrack
-  };
+      scrollbar-color: ${themeColors.scrollbarThumb} ${themeColors.scrollbarTrack};
     }
 
     /* Line numbers styling */
@@ -173,74 +201,24 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
     .code-viewer-${theme} .token.prolog,
     .code-viewer-${theme} .token.doctype,
     .code-viewer-${theme} .token.cdata {
-      color: ${
-        theme === 'white'
-          ? '#6a737d'
-          : theme === 'light'
-          ? '#708090'
-          : theme === 'dark'
-          ? '#6a9955'
-          : theme === 'tomorrow'
-          ? '#969896'
-          : '#75715e'
-      } !important;
+      color: ${syntaxColors.comment} !important;
     }
 
     .code-viewer-${theme} .token.punctuation {
-      color: ${
-        theme === 'white'
-          ? '#24292e'
-          : theme === 'light'
-          ? '#999'
-          : theme === 'dark'
-          ? '#d4d4d4'
-          : theme === 'tomorrow'
-          ? '#cccccc'
-          : '#f8f8f2'
-      } !important;
+      color: ${syntaxColors.punctuation} !important;
     }
 
     .code-viewer-${theme} .token.tag {
-      color: ${
-        theme === 'white'
-          ? '#22863a'
-          : theme === 'light'
-          ? '#905'
-          : theme === 'dark'
-          ? '#569cd6'
-          : theme === 'tomorrow'
-          ? '#cc7832'
-          : '#f92672'
-      } !important;
+      color: ${syntaxColors.tag} !important;
     }
 
     .code-viewer-${theme} .token.attr-name {
-      color: ${
-        theme === 'white'
-          ? '#6f42c1'
-          : theme === 'light'
-          ? '#690'
-          : theme === 'dark'
-          ? '#9cdcfe'
-          : theme === 'tomorrow'
-          ? '#de935f'
-          : '#a6e22e'
-      } !important;
+      color: ${syntaxColors.attrName} !important;
     }
 
     .code-viewer-${theme} .token.attr-value,
     .code-viewer-${theme} .token.string {
-      color: ${
-        theme === 'white'
-          ? '#032f62'
-          : theme === 'light'
-          ? '#07a'
-          : theme === 'dark'
-          ? '#ce9178'
-          : theme === 'tomorrow'
-          ? '#b5bd68'
-          : '#e6db74'
-      } !important;
+      color: ${syntaxColors.attrValue} !important;
     }
 
     /* Text wrapping styles */
@@ -262,7 +240,31 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
     .line-numbers .code-wrap {
       padding-left: 3.8em !important;
     }
-  `;
+  `,
+    [theme, themeColors, syntaxColors]
+  );
+
+  useEffect(() => {
+    if (codeRef.current && decodedCode) {
+      // Set the code content
+      codeRef.current.textContent = decodedCode;
+
+      // Apply PrismJS highlighting
+      Prism.highlightElement(codeRef.current);
+    }
+  }, [decodedCode, language, theme]); // Include theme in dependencies
+
+  // Handle empty code
+  if (!code && !decodedCode) {
+    return (
+      <div className='flex items-center justify-center h-full bg-gray-50 text-gray-500'>
+        <div className='text-center'>
+          <div className='text-4xl mb-2'>📄</div>
+          <p>No code to display</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -282,7 +284,8 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
               wrapText ? 'code-wrap' : 'code-no-wrap'
             }`}
           >
-            {code}
+            {/* Fallback content - will be replaced by useEffect */}
+            {decodedCode || code}
           </code>
         </pre>
       </div>
