@@ -18,7 +18,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   onSave,
 }) => {
   return (
-    <div className='flex items-center justify-between py-2 px-4 bg-white border-b'>
+    <div className='flex items-center justify-between py-2 px-4 bg-white'>
       <div className='flex items-center space-x-3'>
         <span className='font-medium text-gray-900'>XML Document Editor</span>
         {hasChanges && (

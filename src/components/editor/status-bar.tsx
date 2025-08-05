@@ -35,7 +35,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   additionalInfo,
 }) => {
   return (
-    <div className='flex items-center justify-between px-4 py-2 bg-gray-50 border-t text-sm text-gray-600'>
+    <div className='flex items-center justify-between px-4 py-2 bg-white text-sm text-muted-foreground'>
       <div className='flex items-center space-x-4'>
         <span>Words: {wordCount.toLocaleString()}</span>
         <span>Characters: {charCount.toLocaleString()}</span>

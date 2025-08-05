@@ -11,7 +11,7 @@ export default function HomePage() {
       </div>
 
       {/* Main Content Flex */}
-      <div className='flex-1 flex gap-4 p-0 overflow-hidden min-h-0'>
+      <div className='flex-1 flex gap-0 p-0 overflow-hidden min-h-0'>
         {/* Left Panel - File Manager (40% width) */}
         <div className='flex-[2.2] overflow-hidden !p-0'>
           <FileManagerPanel />
