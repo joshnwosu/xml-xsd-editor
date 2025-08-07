@@ -42,7 +42,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   };
 
   return (
-    <div className='flex flex-wrap gap-1 p-1 bg-gray-100 items-center'>
+    <div className='flex flex-wrap gap-1 p-1 px-4 bg-gray-100 items-center justify-end'>
       {/* Undo/Redo */}
       <ToolbarButton onClick={() => onCommand('undo')} title='Undo (Ctrl+Z)'>
         <Undo size={16} />
