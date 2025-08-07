@@ -5,8 +5,8 @@ import HomePage from '@/pages/home';
 import NotFoundPage from '@/pages/not-found';
 import XMLXSDEditor from '@/pages/xml-editor';
 import XMLXSDEditorNew from '@/pages/xml-editor-new';
-import XMLXSDEditorOld from '@/pages/xml-editor-old';
-import XMLXSDEditorRefactored from '@/pages/xml-editor-refactored';
+// import XMLXSDEditorOld from '@/pages/xml-editor-old';
+// import XMLXSDEditorRefactored from '@/pages/xml-editor-refactored';
 
 export const router = createBrowserRouter([
   {
@@ -24,14 +24,14 @@ export const router = createBrowserRouter([
         path: '/xml-xsd-new',
         element: <XMLXSDEditorNew />,
       },
-      {
-        path: '/xml-xsd-old',
-        element: <XMLXSDEditorOld />,
-      },
-      {
-        path: '/xml-xsd-refactored',
-        element: <XMLXSDEditorRefactored />,
-      },
+      // {
+      //   path: '/xml-xsd-old',
+      //   element: <XMLXSDEditorOld />,
+      // },
+      // {
+      //   path: '/xml-xsd-refactored',
+      //   element: <XMLXSDEditorRefactored />,
+      // },
       {
         path: '/editor',
         element: <XMLXSDEditor />,

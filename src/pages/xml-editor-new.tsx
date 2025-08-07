@@ -18,16 +18,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import {
-  Plus,
-  Trash2,
-  Edit,
-  Save,
-  Type,
-  List,
-  FileText,
-  Zap,
-} from 'lucide-react';
+import { Plus, Trash2, Edit, Type, List, FileText, Zap } from 'lucide-react';
 
 // Types
 interface XMLAttribute {
@@ -764,7 +755,7 @@ const XMLNodeEditor: React.FC<{
     updateXSDElement,
     addXSDElement,
     deleteXSDElement,
-    autoGenerateXSD,
+    // autoGenerateXSD,
   } = useEditorStore();
   const xsdElement = findXSDElement(parsedXSD, node.name);
 
