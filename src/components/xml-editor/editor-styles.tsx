@@ -118,14 +118,7 @@ export const EditorStyles: React.FC = () => {
         padding: 6px 0;
       }
       
-      .doc-email a {
-        color: #007bff;
-        text-decoration: none;
-      }
-      
-      .doc-email a:hover {
-        text-decoration: underline;
-      }
+
       
       .doc-phone {
         margin: 8px 0;
@@ -148,6 +141,52 @@ export const EditorStyles: React.FC = () => {
       .doc-content {
         margin-left: 0px;
         margin-top: 10px;
+      }
+
+      .doc-url a, .doc-email a {
+        font-weight: bold;
+        color: #007bff;
+        text-decoration: none;
+        background: #f8f9fa;
+        padding: 2px 6px;
+        border-radius: 4px;
+        border-left: 3px solid #007bff;
+        cursor: pointer;
+      }
+
+      .doc-url a:hover, .doc-email a:hover {
+        text-decoration: underline;
+      }
+
+      .phone-value {
+        font-weight: bold;
+        color: #17a2b8;
+        background: #d1ecf1;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border-left: 3px solid #17a2b8;
+        font-family: monospace;
+      }
+
+      .currency-value {
+        font-weight: bold;
+        color: #28a745;
+        background: #d4edda;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border-left: 3px solid #28a745;
+        font-family: monospace;
+      }
+
+      .time-value,
+      .date-value {
+        font-weight: 500;
+        color: #6f42c1;
+        background: #f3e8ff;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border-left: 3px solid #6f42c1;
+        font-family: monospace;
       }
       
       /* Paragraphs */
