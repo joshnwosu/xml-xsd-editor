@@ -6,7 +6,23 @@ export interface XmlElement {
   isTextNode?: boolean;
 }
 
+export interface SchemaInfo {
+  [tagName: string]: {
+    type?: 'enum' | 'string' | 'number' | 'date';
+    enumValues?: string[];
+  };
+}
+
 export class XmlWysiwygConverter {
+  private static schemaInfo: SchemaInfo = {};
+
+  /**
+   * Set schema information for dropdown rendering
+   */
+  static setSchemaInfo(schema: SchemaInfo): void {
+    this.schemaInfo = schema;
+  }
+
   /**
    * Convert XML content to WYSIWYG HTML format
    */
@@ -48,22 +64,30 @@ export class XmlWysiwygConverter {
     let result = '';
 
     if (node.nodeType === Node.ELEMENT_NODE) {
+      // Check if this node has text content (leaf node) or only child elements
+      const hasTextContent =
+        node.textContent &&
+        node.textContent.trim() &&
+        node.children.length === 0;
+      const hasOnlyChildElements = node.children.length > 0 && !hasTextContent;
+
       // Handle different XML elements as document components
       if (level === 0) {
         // Root element as document title
         result += `<h1 class="doc-title" contenteditable="true" data-xml-tag="${
           node.tagName
         }" data-level="${level}">${this.formatTagName(node.tagName)}</h1>`;
-      } else if (level === 1) {
-        // First level as section headers
-        result += `<h2 class="doc-section" contenteditable="true" data-xml-tag="${
-          node.tagName
-        }" data-level="${level}">${this.formatTagName(node.tagName)}</h2>`;
-      } else if (level === 2) {
-        // Second level as subsection headers
-        result += `<h3 class="doc-subsection" contenteditable="true" data-xml-tag="${
-          node.tagName
-        }" data-level="${level}">${this.formatTagName(node.tagName)}</h3>`;
+      } else if (hasOnlyChildElements && level <= 2) {
+        // Container elements as section headers (only if they have child elements and are not too deep)
+        if (level === 1) {
+          result += `<h2 class="doc-section" contenteditable="true" data-xml-tag="${
+            node.tagName
+          }" data-level="${level}">${this.formatTagName(node.tagName)}</h2>`;
+        } else if (level === 2) {
+          result += `<h3 class="doc-subsection" contenteditable="true" data-xml-tag="${
+            node.tagName
+          }" data-level="${level}">${this.formatTagName(node.tagName)}</h3>`;
+        }
       }
 
       // Add attributes as metadata
@@ -88,23 +112,41 @@ export class XmlWysiwygConverter {
         node.children.length === 0
       ) {
         const text = node.textContent.trim();
-        // Format different types of content with data attributes for reverse mapping
-        if (this.isEmail(text)) {
-          result += `<p class="doc-email" contenteditable="true" data-xml-tag="${node.tagName}" data-content="${text}" data-content-type="email"><strong>Email:</strong> <a href="mailto:${text}">${text}</a></p>`;
-        } else if (this.isPhone(text)) {
-          result += `<p class="doc-phone" contenteditable="true" data-xml-tag="${node.tagName}" data-content="${text}" data-content-type="phone"><strong>Phone:</strong> ${text}</p>`;
-        } else if (this.isDate(text)) {
-          result += `<p class="doc-date" contenteditable="true" data-xml-tag="${
-            node.tagName
-          }" data-content="${text}" data-content-type="date"><strong>Date:</strong> ${this.formatDate(
-            text
-          )}</p>`;
-        } else if (this.isNumber(text)) {
-          result += `<p class="doc-number" contenteditable="true" data-xml-tag="${node.tagName}" data-content="${text}" data-content-type="number"><strong>Value:</strong> ${text}</p>`;
-        } else if (text.length > 100) {
-          result += `<div class="doc-paragraph" contenteditable="true" data-xml-tag="${node.tagName}" data-content="${text}" data-content-type="paragraph">${text}</div>`;
+        const tagName = node.tagName;
+        const formattedTagName = this.formatTagName(tagName);
+
+        // Check if this field has schema information for dropdown
+        const schemaInfo = this.schemaInfo[tagName];
+        if (schemaInfo?.type === 'enum' && schemaInfo.enumValues) {
+          // Render as dropdown
+          result += `<div class="doc-field-container" data-xml-tag="${tagName}" data-content="${text}" data-content-type="enum">`;
+          result += `<label class="doc-field-label"><strong>${formattedTagName}:</strong></label>`;
+          result += `<select class="doc-enum-select" data-xml-tag="${tagName}" data-content="${text}">`;
+          schemaInfo.enumValues.forEach((value) => {
+            const selected = value === text ? 'selected' : '';
+            result += `<option value="${value}" ${selected}>${value}</option>`;
+          });
+          result += '</select></div>';
         } else {
-          result += `<p class="doc-field" contenteditable="true" data-xml-tag="${node.tagName}" data-content="${text}" data-content-type="field">${text}</p>`;
+          // Format different types of content with data attributes for reverse mapping
+          if (this.isEmail(text)) {
+            result += `<p class="doc-email" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="email"><strong>${formattedTagName}:</strong> <a href="mailto:${text}">${text}</a></p>`;
+          } else if (this.isPhone(text)) {
+            result += `<p class="doc-phone" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="phone"><strong>${formattedTagName}:</strong> ${text}</p>`;
+          } else if (this.isDate(text)) {
+            result += `<p class="doc-date" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="date"><strong>${formattedTagName}:</strong> ${this.formatDate(
+              text
+            )}</p>`;
+          } else if (this.isNumber(text)) {
+            result += `<p class="doc-number" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="number"><strong>${formattedTagName}:</strong> ${text}</p>`;
+          } else if (text.length > 100) {
+            result += `<div class="doc-paragraph-container" data-xml-tag="${tagName}" data-content="${text}" data-content-type="paragraph">`;
+            result += `<label class="doc-field-label"><strong>${formattedTagName}:</strong></label>`;
+            result += `<div class="doc-paragraph" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}">${text}</div>`;
+            result += '</div>';
+          } else {
+            result += `<p class="doc-field" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="field"><strong>${formattedTagName}:</strong> ${text}</p>`;
+          }
         }
       } else if (node.children.length > 0) {
         // Process child elements
@@ -187,17 +229,22 @@ export class XmlWysiwygConverter {
       }
     });
 
-    // Find content elements for this tag
+    // Find content elements for this tag (including dropdowns)
     const contentElements = container.querySelectorAll(
       `[data-xml-tag="${tagName}"][data-content]`
+    );
+    const dropdownElements = container.querySelectorAll(
+      `[data-xml-tag="${tagName}"].doc-enum-select`
     );
     const childContainers = container.querySelectorAll(
       `[data-xml-tag="${tagName}"] .doc-content`
     );
 
-    if (contentElements.length > 0) {
+    if (contentElements.length > 0 || dropdownElements.length > 0) {
       // Has text content
       xml += '>';
+
+      // Handle regular content elements
       contentElements.forEach((contentElement) => {
         const content =
           contentElement.getAttribute('data-content') ||
@@ -205,6 +252,17 @@ export class XmlWysiwygConverter {
           '';
         xml += this.escapeXmlContent(content);
       });
+
+      // Handle dropdown elements
+      dropdownElements.forEach((dropdownElement) => {
+        const selectElement = dropdownElement as HTMLSelectElement;
+        const selectedValue =
+          selectElement.value ||
+          selectElement.getAttribute('data-content') ||
+          '';
+        xml += this.escapeXmlContent(selectedValue);
+      });
+
       xml += `</${tagName}>`;
     } else if (childContainers.length > 0) {
       // Has child elements
@@ -280,15 +338,6 @@ export class XmlWysiwygConverter {
       .replace(/&quot;/g, '"')
       .replace(/&#x27;/g, "'");
   }
-
-  // private static escapeHtml(str: string): string {
-  //   return str
-  //     .replace(/&/g, '&amp;')
-  //     .replace(/</g, '&lt;')
-  //     .replace(/>/g, '&gt;')
-  //     .replace(/"/g, '&quot;')
-  //     .replace(/'/g, '&#x27;');
-  // }
 
   private static escapeXmlContent(str: string): string {
     return str

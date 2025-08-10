@@ -744,19 +744,34 @@ const XSDElementEditor: React.FC<{
   );
 };
 
+const getHeadingClass = (depth: number) => {
+  if (depth === 0) return 'doc-title';
+  if (depth === 1) return 'doc-section';
+  if (depth === 2) return 'doc-subsection';
+  return 'doc-heading';
+};
+
+const getContentClass = (type: string, name: string) => {
+  if (name.toLowerCase().includes('email')) return 'doc-email';
+  if (name.toLowerCase().includes('phone')) return 'doc-phone';
+  if (type === 'xs:date') return 'doc-date';
+  if (type === 'xs:int' || type === 'xs:decimal') return 'doc-number';
+  if (
+    name.toLowerCase().includes('paragraph') ||
+    name.toLowerCase().includes('content')
+  )
+    return 'doc-paragraph';
+  return 'doc-field';
+};
+
 const XMLNodeEditor: React.FC<{
   node: XMLNode;
   onUpdate: (updates: Partial<XMLNode>) => void;
   onDelete: () => void;
   onAddChild: () => void;
 }> = ({ node, onUpdate, onDelete, onAddChild }) => {
-  const {
-    parsedXSD,
-    updateXSDElement,
-    addXSDElement,
-    deleteXSDElement,
-    // autoGenerateXSD,
-  } = useEditorStore();
+  const { parsedXSD, updateXSDElement, addXSDElement, deleteXSDElement } =
+    useEditorStore();
   const xsdElement = findXSDElement(parsedXSD, node.name);
 
   const handleXSDElementUpdate = (updates: Partial<XSDElement>) => {
@@ -788,33 +803,25 @@ const XMLNodeEditor: React.FC<{
     }
   };
 
-  const HeadingTag = node.depth === 0 ? 'h1' : 'h2';
+  const HeadingTag =
+    node.depth === 0 ? 'h1' : (`h${Math.min(node.depth! + 1, 6)}` as any);
+
+  const headingClass = getHeadingClass(node.depth || 0);
+  const contentClass = getContentClass(
+    xsdElement?.type || inferType(node.textContent || ''),
+    node.name
+  );
 
   return (
     <div className='py-2 hover:bg-gray-100 rounded transition-colors duration-200'>
       <div className='flex items-center justify-between'>
-        <div className='flex items-center gap-2 font-["Calibri",sans-serif] text-gray-800'>
+        <div className='flex items-center gap-2 text-gray-800'>
           <HeadingTag
-            className={`m-0 ${
-              node.depth === 0 ? 'text-2xl font-bold' : 'text-xl font-semibold'
-            }`}
+            className={`${headingClass} m-0`}
+            data-level={node.depth! + 1}
           >
             {node.name}
-            {node.attributes.map((attr, index) => (
-              <Badge
-                key={index}
-                variant='outline'
-                className='text-xs border-gray-300 ml-2'
-              >
-                {attr.name}="{attr.value}"
-              </Badge>
-            ))}
           </HeadingTag>
-          {node.textContent && (
-            <p className='m-0 text-sm text-gray-600 font-["Calibri",sans-serif]'>
-              {node.textContent}
-            </p>
-          )}
         </div>
         <Dialog>
           <DialogTrigger asChild>
@@ -951,8 +958,22 @@ const XMLNodeEditor: React.FC<{
           </DialogContent>
         </Dialog>
       </div>
+      {node.attributes.length > 0 && (
+        <div className='doc-metadata'>
+          {node.attributes.map((attr, index) => (
+            <Badge
+              key={index}
+              variant='outline'
+              className='doc-attr border-gray-300 ml-2'
+            >
+              {attr.name}: {attr.value}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {node.textContent && <p className={contentClass}>{node.textContent}</p>}
       {node.children.length > 0 && (
-        <div>
+        <div className='doc-content'>
           {node.children.map((child) => (
             <XMLNodeEditorContainer key={child.id} nodeId={child.id} />
           ))}
@@ -1035,17 +1056,15 @@ const CombinedVisualEditor: React.FC = () => {
 
   return (
     <div className='h-full overflow-y-auto p-6 bg-gray-50'>
-      <div className='max-w-4xl mx-auto bg-white border border-gray-200 shadow-sm rounded-lg p-6 h-full hdden'>
+      <div className='xml-document document-editor bg-white border border-gray-200 shadow-sm rounded-lg p-6 h-full'>
         <div className='flex justify-between items-center mb-6'>
-          <h3 className='text-xl font-semibold font-["Calibri",sans-serif] text-gray-800'>
+          <h3 className='text-xl font-semibold text-gray-800'>
             XML Document Editor
           </h3>
           <div className='flex gap-2 items-center'>
             <div className='flex items-center gap-2'>
               <Zap className='w-4 h-4 text-yellow-500' />
-              <label className='text-sm font-["Calibri",sans-serif]'>
-                Auto-generate XSD
-              </label>
+              <label className='text-sm'>Auto-generate XSD</label>
               <input
                 type='checkbox'
                 checked={autoGenerateXSD}
@@ -1074,9 +1093,9 @@ const CombinedVisualEditor: React.FC = () => {
         </div>
         <div className='min-h-[500px]'>
           {parsedXML.length === 0 ? (
-            <div className='text-center text-gray-500 py-12 font-["Calibri",sans-serif]'>
-              <FileText className='w-12 h-12 mx-auto mb-2 text-gray-300' />
-              <p>No XML elements. Add some elements to get started.</p>
+            <div className='no-xml-content'>
+              <h3>No XML elements</h3>
+              <p>Add some elements to get started.</p>
             </div>
           ) : (
             parsedXML.map((node) => (
@@ -1086,6 +1105,436 @@ const CombinedVisualEditor: React.FC = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+const EditorStyles: React.FC = () => {
+  return (
+    <style>{`
+      /* Document container styling */
+      .xml-document {
+        max-width: none;
+        font-family: sans-serif;
+        line-height: 1.6;
+        color: #1a1a1a;
+        background: white;
+      }
+      
+      .document-editor {
+        background: white !important;
+      }
+      
+      /* Hide all XML structural elements completely */
+      .xml-element,
+      .xml-element-header,
+      .xml-element-content,
+      .xml-tag-name,
+      .xml-attributes,
+      .xml-attribute {
+        display: none !important;
+      }
+      
+      /* Document content elements - clean, document-like appearance */
+      
+      /* Headings */
+      .doc-heading,
+      h1, h2, h3, h4, h5, h6 {
+        font-family: sans-serif;
+        font-weight: bold;
+        color: #111827;
+        margin: 2rem 0 1rem 0;
+        line-height: 1.2;
+        page-break-after: avoid;
+      }
+      
+      h1, .doc-heading[data-level="1"] {
+        font-size: 2rem;
+        border-bottom: 2px solid #e5e7eb;
+        padding-bottom: 0.5rem;
+      }
+      
+      h2, .doc-heading[data-level="2"] {
+        font-size: 1.75rem;
+      }
+      
+      h3, .doc-heading[data-level="3"] {
+        font-size: 1.5rem;
+      }
+      
+      h4, .doc-heading[data-level="4"] {
+        font-size: 1.25rem;
+      }
+      
+      h5, h6 {
+        font-size: 1.125rem;
+      }
+      
+      /* Document title from your preview */
+      .doc-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #2c3e50;
+        margin-bottom: 20px;
+        text-align: center;
+        border-bottom: 2px solid #3498db;
+        padding-bottom: 10px;
+      }
+      
+      .doc-section {
+        font-size: 18px;
+        font-weight: bold;
+        color: #34495e;
+        margin: 20px 0 10px 0;
+        border-left: 4px solid #3498db;
+        padding-left: 10px;
+      }
+      
+      .doc-subsection {
+        font-size: 16px;
+        font-weight: bold;
+        color: #5d6d7e;
+        margin: 15px 0 8px 0;
+      }
+      
+      .doc-metadata {
+        background: #f8f9fa;
+        padding: 8px 12px;
+        border-radius: 4px;
+        margin: 8px 0;
+        border-left: 3px solid #6c757d;
+        font-size: 14px;
+      }
+      
+      .doc-attr {
+        color: #495057;
+        margin-right: 15px;
+      }
+      
+      .doc-field {
+        margin: 8px 0;
+        padding: 4px 0;
+      }
+      
+      .doc-paragraph {
+        margin: 12px 0;
+        padding: 10px 0;
+        text-align: justify;
+      }
+      
+      .doc-email {
+        margin: 8px 0;
+        padding: 6px 0;
+      }
+      
+      .doc-email a {
+        color: #007bff;
+        text-decoration: none;
+      }
+      
+      .doc-email a:hover {
+        text-decoration: underline;
+      }
+      
+      .doc-phone {
+        margin: 8px 0;
+        padding: 6px 0;
+        font-family: monospace;
+      }
+      
+      .doc-date {
+        margin: 8px 0;
+        padding: 6px 0;
+        font-style: italic;
+      }
+      
+      .doc-number {
+        margin: 8px 0;
+        padding: 6px 0;
+        font-weight: 500;
+      }
+      
+      .doc-content {
+        margin-left: 0px;
+        margin-top: 10px;
+      }
+      
+      /* Paragraphs */
+      .doc-paragraph {
+        font-size: 16px;
+        line-height: 1.6;
+        margin: 1rem 0;
+        color: #374151;
+        text-align: justify;
+        text-indent: 0;
+        background: transparent;
+        border: none;
+        outline: none;
+        padding: 0;
+        font-family: sans-serif;
+      }
+      
+      .doc-paragraph:focus {
+        background: #f9fafb;
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+      }
+      
+      /* Lists */
+      .doc-list {
+        margin: 1.5rem 0;
+        padding-left: 0;
+      }
+      
+      .doc-item {
+        margin: 0.75rem 0 0.75rem 2rem;
+        position: relative;
+        line-height: 1.6;
+        font-size: 16px;
+        color: #374151;
+        list-style: none;
+      }
+      
+      .doc-item:before {
+        content: "•";
+        position: absolute;
+        left: -1.5rem;
+        color: #6b7280;
+        font-weight: bold;
+        font-size: 1.2em;
+      }
+      
+      .doc-list[data-type="ordered"] {
+        counter-reset: list-counter;
+      }
+      
+      .doc-list[data-type="ordered"] .doc-item {
+        counter-increment: list-counter;
+      }
+      
+      .doc-list[data-type="ordered"] .doc-item:before {
+        content: counter(list-counter) ".";
+        left: -2rem;
+        width: 1.5rem;
+        text-align: right;
+      }
+      
+      .doc-item:focus {
+        background: #f9fafb;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+      }
+      
+      /* Sections */
+      .doc-section {
+        margin: 2rem 0;
+      }
+      
+      /* Quotes */
+      .doc-quote {
+        border-left: 4px solid #d1d5db;
+        padding-left: 2rem;
+        margin: 2rem 0;
+        font-style: italic;
+        color: #4b5563;
+        font-size: 1.125rem;
+        position: relative;
+      }
+      
+      .doc-quote:before {
+        content: """;
+        font-size: 4rem;
+        color: #d1d5db;
+        position: absolute;
+        left: -0.5rem;
+        top: -1rem;
+        font-family: Georgia, serif;
+      }
+      
+      .doc-quote:focus {
+        background: #f9fafb;
+        padding: 1rem 1rem 1rem 2rem;
+        border-radius: 0.5rem;
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+      }
+      
+      /* Code blocks */
+      .doc-code {
+        background: #f3f4f6;
+        border: 1px solid #d1d5db;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        margin: 2rem 0;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        color: #1f2937;
+        overflow-x: auto;
+        white-space: pre-wrap;
+      }
+      
+      .doc-code:focus {
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+      }
+      
+      /* Tables */
+      .doc-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 2rem 0;
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        overflow: hidden;
+      }
+      
+      .doc-table th,
+      .doc-table td {
+        padding: 0.75rem 1rem;
+        border-right: 1px solid #e5e7eb;
+        text-align: left;
+        vertical-align: top;
+      }
+      
+      .doc-table th {
+        background: #f9fafb;
+        font-weight: bold;
+      }
+      
+      .doc-table tr {
+        border-bottom: 1px solid #e5e7eb;
+      }
+      
+      .doc-table tr:last-child {
+        border-bottom: none;
+      }
+      
+      .doc-table th:last-child,
+      .doc-table td:last-child {
+        border-right: none;
+      }
+      
+      .doc-table td:focus {
+        background: #f3f4f6;
+        outline: 2px solid #3b82f6;
+        outline-offset: -2px;
+      }
+      
+      /* Links */
+      .doc-link {
+        color: #2563eb;
+        text-decoration: underline;
+        text-decoration-color: #bfdbfe;
+        text-underline-offset: 0.2em;
+        transition: all 0.2s ease;
+      }
+      
+      .doc-link:hover {
+        color: #1d4ed8;
+        text-decoration-color: #2563eb;
+      }
+      
+      .doc-link:focus {
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+        border-radius: 0.125rem;
+      }
+      
+      /* Images */
+      .doc-image {
+        max-width: 100%;
+        height: auto;
+        margin: 2rem 0;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      }
+      
+      .doc-image:focus {
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+      }
+      
+      /* Emphasis */
+      .doc-emphasis,
+      em {
+        font-style: italic;
+        color: #374151;
+      }
+      
+      .doc-strong,
+      strong {
+        font-weight: bold;
+        color: #111827;
+      }
+      
+      /* Focus states for better accessibility */
+      [contenteditable]:focus {
+        outline: none;
+      }
+      
+      [contenteditable] *:focus {
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+        border-radius: 0.25rem;
+      }
+      
+      /* Print styles */
+      @media print {
+        .document-editor {
+          box-shadow: none !important;
+          border: none !important;
+          margin: 0 !important;
+          padding: 1in !important;
+        }
+        
+        .doc-heading,
+        h1, h2, h3, h4, h5, h6 {
+          page-break-after: avoid;
+        }
+        
+        .doc-paragraph,
+        .doc-item {
+          orphans: 3;
+          widows: 3;
+        }
+        
+        .doc-section {
+          page-break-inside: avoid;
+        }
+      }
+      
+      /* No content state */
+      .no-xml-content {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        min-height: 400px;
+      }
+      
+      .no-xml-content h3 {
+        color: #6b7280;
+        font-size: 1.5rem;
+        margin-bottom: 0.5rem;
+      }
+      
+      .no-xml-content p {
+        color: #9ca3af;
+        font-size: 1rem;
+      }
+      
+      .error {
+        color: #dc3545;
+        font-style: italic;
+        text-align: center;
+        padding: 20px;
+      }
+    `}</style>
   );
 };
 
@@ -1180,166 +1629,164 @@ const XMLXSDEditorNew: React.FC = () => {
   };
 
   return (
-    <div className='h-screen flex flex-col bg-gray-50'>
-      <div className='bg-white border-b shadow-sm p-4'>
-        <h1 className='text-2xl font-bold text-gray-800 font-["Calibri",sans-serif] mb-2'>
-          XML/XSD Editor
-        </h1>
-        <p className='text-gray-600 text-sm font-["Calibri",sans-serif]'>
-          Create and edit XML documents with integrated XSD schema editing
-        </p>
-      </div>
+    <>
+      <EditorStyles />
+      <div className='h-screen flex flex-col bg-gray-50'>
+        <div className='bg-white border-b shadow-sm p-4'>
+          <h1 className='text-2xl font-bold text-gray-800 mb-2'>
+            XML/XSD Editor
+          </h1>
+          <p className='text-gray-600 text-sm'>
+            Create and edit XML documents with integrated XSD schema editing
+          </p>
+        </div>
 
-      <div className='flex-1 overflow-hidden'>
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) =>
-            setActiveTab(value as 'xml' | 'xsd' | 'visual')
-          }
-          className='h-full flex flex-col'
-        >
-          <div className='bg-white border-b px-4'>
-            <TabsList className='grid w-full max-w-md grid-cols-3'>
-              <TabsTrigger
-                value='visual'
-                className='flex items-center gap-2 font-["Calibri",sans-serif]'
-              >
-                <Edit className='w-4 h-4' />
-                Integrated Editor
-              </TabsTrigger>
-              <TabsTrigger
-                value='xml'
-                className='flex items-center gap-2 font-["Calibri",sans-serif]'
-              >
-                <FileText className='w-4 h-4' />
-                Raw XML
-              </TabsTrigger>
-              <TabsTrigger
-                value='xsd'
-                className='flex items-center gap-2 font-["Calibri",sans-serif]'
-              >
-                <List className='w-4 h-4' />
-                Raw XSD
-              </TabsTrigger>
-            </TabsList>
-          </div>
+        <div className='flex-1 overflow-hidden'>
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) =>
+              setActiveTab(value as 'xml' | 'xsd' | 'visual')
+            }
+            className='h-full flex flex-col'
+          >
+            <div className='bg-white border-b px-4'>
+              <TabsList className='grid w-full max-w-md grid-cols-3'>
+                <TabsTrigger value='visual' className='flex items-center gap-2'>
+                  <Edit className='w-4 h-4' />
+                  Integrated Editor
+                </TabsTrigger>
+                <TabsTrigger value='xml' className='flex items-center gap-2'>
+                  <FileText className='w-4 h-4' />
+                  Raw XML
+                </TabsTrigger>
+                <TabsTrigger value='xsd' className='flex items-center gap-2'>
+                  <List className='w-4 h-4' />
+                  Raw XSD
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-          <TabsContent value='visual' className='flex-1'>
-            <CombinedVisualEditor />
-          </TabsContent>
-          <TabsContent value='xml' className='flex-1 p-4 space-y-4'>
-            <div className='flex justify-between items-center'>
-              <h2 className='text-lg font-semibold text-gray-700 font-["Calibri",sans-serif]'>
-                XML Document (Raw)
-              </h2>
-              <div className='flex gap-2'>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => formatCode(xmlContent, 'xml')}
-                >
-                  Format
-                </Button>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => {
-                    const validation = validateXML();
-                    alert(validation.message);
-                  }}
-                >
-                  Validate
-                </Button>
-              </div>
-            </div>
-            <div className='h-full border rounded-lg overflow-hidden'>
-              <CodeEditor
-                value={xmlContent}
-                onChange={(content) => handleCodeChange(content, 'xml')}
-                language='xml'
-              />
-            </div>
-          </TabsContent>
-          <TabsContent value='xsd' className='flex-1 p-4 space-y-4'>
-            <div className='flex justify-between items-center'>
-              <h2 className='text-lg font-semibold text-gray-700 font-["Calibri",sans-serif]'>
-                XSD Schema (Raw)
-              </h2>
-              <div className='flex gap-2 items-center'>
-                <div className='flex items-center gap-2 mr-4'>
-                  <input
-                    type='checkbox'
-                    id='auto-generate'
-                    checked={autoGenerateXSD}
-                    onChange={(e) => {
-                      const { setAutoGenerateXSD } = useEditorStore.getState();
-                      setAutoGenerateXSD(e.target.checked);
-                    }}
-                  />
-                  <label
-                    htmlFor='auto-generate'
-                    className='text-sm text-gray-600 font-["Calibri",sans-serif]'
+            <TabsContent value='visual' className='flex-1'>
+              <CombinedVisualEditor />
+            </TabsContent>
+            <TabsContent value='xml' className='flex-1 p-4 space-y-4'>
+              <div className='flex justify-between items-center'>
+                <h2 className='text-lg font-semibold text-gray-700'>
+                  XML Document (Raw)
+                </h2>
+                <div className='flex gap-2'>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => formatCode(xmlContent, 'xml')}
                   >
-                    Auto-generate from XML
-                  </label>
+                    Format
+                  </Button>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => {
+                      const validation = validateXML();
+                      alert(validation.message);
+                    }}
+                  >
+                    Validate
+                  </Button>
                 </div>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => formatCode(xsdContent, 'xsd')}
-                  disabled={autoGenerateXSD}
-                >
-                  Format
-                </Button>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => {
-                    const validation = validateXSD();
-                    alert(validation.message);
-                  }}
-                >
-                  Validate
-                </Button>
               </div>
-            </div>
-            {autoGenerateXSD && (
-              <div className='bg-yellow-50 border border-yellow-200 rounded p-3'>
-                <p className='text-yellow-800 text-sm font-["Calibri",sans-serif]'>
-                  <Zap className='w-4 h-4 inline mr-1' />
-                  XSD is being automatically generated from your XML structure.
-                </p>
+              <div className='h-full border rounded-lg overflow-hidden'>
+                <CodeEditor
+                  value={xmlContent}
+                  onChange={(content) => handleCodeChange(content, 'xml')}
+                  language='xml'
+                />
               </div>
-            )}
-            <div className='h-full border rounded-lg overflow-hidden'>
-              <CodeEditor
-                value={xsdContent}
-                onChange={(content) => handleCodeChange(content, 'xsd')}
-                language='xsd'
-              />
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
+            </TabsContent>
+            <TabsContent value='xsd' className='flex-1 p-4 space-y-4'>
+              <div className='flex justify-between items-center'>
+                <h2 className='text-lg font-semibold text-gray-700'>
+                  XSD Schema (Raw)
+                </h2>
+                <div className='flex gap-2 items-center'>
+                  <div className='flex items-center gap-2 mr-4'>
+                    <input
+                      type='checkbox'
+                      id='auto-generate'
+                      checked={autoGenerateXSD}
+                      onChange={(e) => {
+                        const { setAutoGenerateXSD } =
+                          useEditorStore.getState();
+                        setAutoGenerateXSD(e.target.checked);
+                      }}
+                    />
+                    <label
+                      htmlFor='auto-generate'
+                      className='text-sm text-gray-600'
+                    >
+                      Auto-generate from XML
+                    </label>
+                  </div>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => formatCode(xsdContent, 'xsd')}
+                    disabled={autoGenerateXSD}
+                  >
+                    Format
+                  </Button>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => {
+                      const validation = validateXSD();
+                      alert(validation.message);
+                    }}
+                  >
+                    Validate
+                  </Button>
+                </div>
+              </div>
+              {autoGenerateXSD && (
+                <div className='bg-yellow-50 border border-yellow-200 rounded p-3'>
+                  <p className='text-yellow-800 text-sm'>
+                    <Zap className='w-4 h-4 inline mr-1' />
+                    XSD is being automatically generated from your XML
+                    structure.
+                  </p>
+                </div>
+              )}
+              <div className='h-full border rounded-lg overflow-hidden'>
+                <CodeEditor
+                  value={xsdContent}
+                  onChange={(content) => handleCodeChange(content, 'xsd')}
+                  language='xsd'
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
 
-      <div className='bg-white border-t p-4'>
-        <div className='flex justify-between items-center text-sm text-gray-500 font-["Calibri",sans-serif]'>
-          <div className='flex items-center gap-4'>
-            <span>XML Elements: {parsedXML.length}</span>
-            <span>XSD Types: {useEditorStore.getState().parsedXSD.length}</span>
-          </div>
-          <div className='flex items-center gap-2'>
-            {autoGenerateXSD && (
-              <Badge variant='secondary' className='text-xs'>
-                <Zap className='w-3 h-3 mr-1' />
-                Auto XSD
-              </Badge>
-            )}
-            <span>Ready</span>
+        <div className='bg-white border-t p-4'>
+          <div className='flex justify-between items-center text-sm text-gray-500'>
+            <div className='flex items-center gap-4'>
+              <span>XML Elements: {parsedXML.length}</span>
+              <span>
+                XSD Types: {useEditorStore.getState().parsedXSD.length}
+              </span>
+            </div>
+            <div className='flex items-center gap-2'>
+              {autoGenerateXSD && (
+                <Badge variant='secondary' className='text-xs'>
+                  <Zap className='w-3 h-3 mr-1' />
+                  Auto XSD
+                </Badge>
+              )}
+              <span>Ready</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 
