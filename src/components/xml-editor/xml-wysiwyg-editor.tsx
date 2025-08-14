@@ -7,8 +7,10 @@ import { WysiwygEditor } from './wysiwyg-editor';
 import { XmlViewer } from './xml-viewer';
 import { EditorStyles } from './editor-styles';
 import { useEditor } from '@/hooks/use-editor';
+import { useFileStore } from '@/store/file-store';
 
 export const XmlWysiwygEditor: React.FC = () => {
+  const { activeTab } = useFileStore();
   const {
     activeFormats,
     wordCount,
@@ -31,8 +33,8 @@ export const XmlWysiwygEditor: React.FC = () => {
 
   return (
     <div className='w-full h-full flex flex-col bg-gray-50'>
-      {/* EditorToolbar - only show in WYSIWYG mode */}
-      {viewMode === 'wysiwyg' && (
+      {/* EditorToolbar - only show in WYSIWYG mode AND when activeTab is 'pdf' */}
+      {viewMode === 'wysiwyg' && activeTab === 'pdf' && (
         <EditorToolbar
           activeFormats={activeFormats}
           onCommand={execCommand}
@@ -64,6 +66,7 @@ export const XmlWysiwygEditor: React.FC = () => {
               onKeyDown={handleKeyDown}
               onMouseUp={updateActiveFormats}
               onKeyUp={updateActiveFormats}
+              isEditable={activeTab === 'pdf'}
             />
           ) : (
             <XmlViewer xmlContent={xmlContent} />

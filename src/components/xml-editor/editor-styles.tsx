@@ -79,6 +79,27 @@ export const EditorStyles: React.FC = () => {
         margin: 20px 0 10px 0;
         border-left: 4px solid #3498db;
         padding-left: 10px;
+
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+
+      .doc-add-button {
+        padding: 10px 20px;
+        background-color: #3498db;
+        color: #fff;
+        border-radius: 8px;
+        margin-left: 10px;
+        font-size: 14px;
+        font-weight: 400;
+        cursor: pointer;
+        
+      }
+
+      .doc-add-button:hover {
+        background-color: #007bff;
       }
       
       .doc-subsection {
@@ -118,14 +139,7 @@ export const EditorStyles: React.FC = () => {
         padding: 6px 0;
       }
       
-      .doc-email a {
-        color: #007bff;
-        text-decoration: none;
-      }
-      
-      .doc-email a:hover {
-        text-decoration: underline;
-      }
+
       
       .doc-phone {
         margin: 8px 0;
@@ -148,6 +162,52 @@ export const EditorStyles: React.FC = () => {
       .doc-content {
         margin-left: 0px;
         margin-top: 10px;
+      }
+
+      .doc-url a, .doc-email a {
+        font-weight: bold;
+        color: #007bff;
+        text-decoration: none;
+        background: #f8f9fa;
+        padding: 2px 6px;
+        border-radius: 4px;
+        border-left: 3px solid #007bff;
+        cursor: pointer;
+      }
+
+      .doc-url a:hover, .doc-email a:hover {
+        text-decoration: underline;
+      }
+
+      .phone-value {
+        font-weight: bold;
+        color: #17a2b8;
+        background: #d1ecf1;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border-left: 3px solid #17a2b8;
+        font-family: monospace;
+      }
+
+      .currency-value {
+        font-weight: bold;
+        color: #28a745;
+        background: #d4edda;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border-left: 3px solid #28a745;
+        font-family: monospace;
+      }
+
+      .time-value,
+      .date-value {
+        font-weight: 500;
+        color: #6f42c1;
+        background: #f3e8ff;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border-left: 3px solid #6f42c1;
+        font-family: monospace;
       }
       
       /* Paragraphs */
@@ -426,6 +486,32 @@ export const EditorStyles: React.FC = () => {
         text-align: center;
         padding: 20px;
       }
+
+      .doc-field-container {
+        margin: 8px 0;
+        padding: 4px 0;
+      }
+
+      .doc-field-label {
+        font-weight: bold;
+        margin-right: 8px;
+      }
+
+      .doc-enum-select {
+        padding: 4px 8px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        background: white;
+        font-family: inherit;
+        font-size: inherit;
+        cursor: pointer;
+      }
+
+      .doc-enum-select:focus {
+        outline: none;
+        border-color: #3498db;
+      }
+
     `}</style>
   );
 };
