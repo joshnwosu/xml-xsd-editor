@@ -40,6 +40,16 @@ export const FileManagerPanel: React.FC = () => {
     },
   ];
 
+  const importFile = useFileStore((state) => state.importFile);
+
+  const handleImportXml = () => {
+    importFile('xml');
+  };
+
+  const handleImportXsd = () => {
+    importFile('xsd');
+  };
+
   const handleFileUpload = (
     event: React.ChangeEvent<HTMLInputElement>,
     fileType: 'xml' | 'xsd' | 'pdf'
@@ -82,17 +92,11 @@ export const FileManagerPanel: React.FC = () => {
         );
       case 'xml':
         return (
-          <XmlTab
-            xmlContent={xmlContent}
-            onFileUpload={(e) => handleFileUpload(e, 'xml')}
-          />
+          <XmlTab xmlContent={xmlContent} onFileUpload={handleImportXml} />
         );
       case 'xsd':
         return (
-          <XsdTab
-            xsdContent={xsdContent}
-            onFileUpload={(e) => handleFileUpload(e, 'xsd')}
-          />
+          <XsdTab xsdContent={xsdContent} onFileUpload={handleImportXsd} />
         );
       case 'validation':
         return (
