@@ -4,8 +4,7 @@ import { useFileStore } from '@/store/file-store';
 import { useEditorCommands } from '@/hooks/use-editor-commands';
 
 export const useEditor = () => {
-  const { xmlContent, setXmlContent, schemaInfo, xsdContent, setXsdContent } =
-    useFileStore();
+  const { xmlContent, setXmlContent, schemaInfo, xsdContent } = useFileStore();
 
   const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set());
   const [wordCount, setWordCount] = useState(0);
