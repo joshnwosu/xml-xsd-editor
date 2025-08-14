@@ -2,7 +2,7 @@ import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 interface ErrorDisplayProps {
-  error: string;
+  error: string | null;
 }
 
 export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error }) => {

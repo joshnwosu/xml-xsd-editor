@@ -1,20 +1,22 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { XmlWysiwygConverter } from '@/utils/xml-wysiwyg-converter';
 import { useFileStore } from '@/store/file-store';
 import { useEditorCommands } from '@/hooks/use-editor-commands';
 
 export const useEditor = () => {
-  const { xmlContent, setXmlContent } = useFileStore();
+  const { xmlContent, setXmlContent, schemaInfo, xsdContent } = useFileStore();
+
   const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set());
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
   const [viewMode, setViewMode] = useState<'wysiwyg' | 'xml'>('wysiwyg');
   const [hasChanges, setHasChanges] = useState(false);
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+
   const editorRef = useRef<HTMLDivElement>(null);
 
   // Check which formats are currently active
-  const updateActiveFormats = (): void => {
+  const updateActiveFormats = useCallback((): void => {
     const formats = new Set<string>();
     if (document.queryCommandState('bold')) formats.add('bold');
     if (document.queryCommandState('italic')) formats.add('italic');
@@ -27,17 +29,22 @@ export const useEditor = () => {
     if (document.queryCommandState('insertOrderedList'))
       formats.add('numberedList');
     setActiveFormats(formats);
-  };
+  }, []);
 
   // Update word and character counts
-  const updateCounts = (): void => {
+  const updateCounts = useCallback((): void => {
     if (editorRef.current) {
       const textContent = editorRef.current.textContent || '';
       setCharCount(textContent.length);
-      const words = textContent.split(/\s+/).filter((word) => word.length > 0);
+      const words = textContent.trim()
+        ? textContent
+            .trim()
+            .split(/\s+/)
+            .filter((word) => word.length > 0)
+        : [];
       setWordCount(words.length);
     }
-  };
+  }, []);
 
   const { execCommand, insertLink, handleImageUpload } = useEditorCommands(
     editorRef,
@@ -46,12 +53,12 @@ export const useEditor = () => {
   );
 
   // Convert XML to WYSIWYG format
-  const loadXmlContent = () => {
+  const loadXmlContent = useCallback(() => {
     if (!xmlContent.trim()) {
       if (editorRef.current) {
         editorRef.current.innerHTML = `
           <div class="no-xml-content">
-            <div style="text-align: center; padding: rem; color: #666;">
+            <div style="text-align: center; padding: 2rem; color: #666;">
               <div style="font-size: 3rem; margin-bottom: 1rem;">📄</div>
               <p>No XML Content</p>
               <p>Load an XML file to start editing in WYSIWYG mode</p>
@@ -63,19 +70,27 @@ export const useEditor = () => {
     }
 
     try {
+      // Set schema info AND XSD content in converter if available
+      if (Object.keys(schemaInfo).length > 0 || xsdContent) {
+        XmlWysiwygConverter.setSchemaInfo(schemaInfo, xsdContent);
+      }
+
       const wysiwygContent = XmlWysiwygConverter.xmlToWysiwyg(xmlContent);
       if (editorRef.current) {
         editorRef.current.innerHTML = wysiwygContent;
       }
-      setError('');
+      setError(null);
       updateCounts();
+      setHasChanges(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(
+        err instanceof Error ? err.message : 'Failed to load XML content'
+      );
     }
-  };
+  }, [xmlContent, schemaInfo, xsdContent, updateCounts]);
 
   // Save WYSIWYG content back to XML
-  const saveToXml = () => {
+  const saveToXml = useCallback(() => {
     if (!editorRef.current) return;
 
     try {
@@ -83,76 +98,83 @@ export const useEditor = () => {
         editorRef.current.innerHTML
       );
 
-      // Escape HTML for storage
-      const escapedXml = xmlOutput
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-
-      setXmlContent(escapedXml);
+      // Store the XML content directly (no HTML escaping for storage)
+      setXmlContent(xmlOutput);
       setHasChanges(false);
-      setError('');
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error saving XML');
+      setError(
+        err instanceof Error ? err.message : 'Failed to save XML content'
+      );
     }
-  };
+  }, [setXmlContent]);
 
   // Handle content changes
-  const handleInput = (): void => {
+  const handleInput = useCallback((): void => {
     setHasChanges(true);
     updateActiveFormats();
     updateCounts();
-  };
+
+    // Handle dropdown changes specifically
+    const event = window.event as Event;
+    if (
+      event?.target &&
+      (event.target as HTMLElement).classList.contains('doc-enum-select')
+    ) {
+      setHasChanges(true);
+    }
+  }, [updateActiveFormats, updateCounts]);
 
   // Handle key events
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
-    if (e.ctrlKey || e.metaKey) {
-      switch (e.key) {
-        case 'b':
-          e.preventDefault();
-          execCommand('bold');
-          break;
-        case 'i':
-          e.preventDefault();
-          execCommand('italic');
-          break;
-        case 'u':
-          e.preventDefault();
-          execCommand('underline');
-          break;
-        case 's':
-          e.preventDefault();
-          saveToXml();
-          break;
-        case 'z':
-          if (e.shiftKey) {
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>): void => {
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key) {
+          case 'b':
             e.preventDefault();
-            execCommand('redo');
-          } else {
+            execCommand('bold');
+            break;
+          case 'i':
             e.preventDefault();
-            execCommand('undo');
-          }
-          break;
+            execCommand('italic');
+            break;
+          case 'u':
+            e.preventDefault();
+            execCommand('underline');
+            break;
+          case 's':
+            e.preventDefault();
+            saveToXml();
+            break;
+          case 'z':
+            if (e.shiftKey) {
+              e.preventDefault();
+              execCommand('redo');
+            } else {
+              e.preventDefault();
+              execCommand('undo');
+            }
+            break;
+        }
       }
-    }
-  };
+    },
+    [execCommand, saveToXml]
+  );
 
   // Handle view mode toggle
-  const toggleViewMode = () => {
+  const toggleViewMode = useCallback(() => {
     if (viewMode === 'wysiwyg' && hasChanges) {
       saveToXml();
     }
-    setViewMode(viewMode === 'wysiwyg' ? 'xml' : 'wysiwyg');
-  };
+    setViewMode((prev) => (prev === 'wysiwyg' ? 'xml' : 'wysiwyg'));
+  }, [viewMode, hasChanges, saveToXml]);
 
   // Load XML content when it changes
   useEffect(() => {
     if (viewMode === 'wysiwyg') {
       loadXmlContent();
-      setHasChanges(false);
     }
-  }, [xmlContent, viewMode]);
+  }, [xmlContent, schemaInfo, xsdContent, viewMode, loadXmlContent]);
 
   // Handle selection changes for active formats
   useEffect(() => {
@@ -165,7 +187,23 @@ export const useEditor = () => {
     document.addEventListener('selectionchange', handleSelectionChange);
     return () =>
       document.removeEventListener('selectionchange', handleSelectionChange);
-  }, [viewMode]);
+  }, [viewMode, updateActiveFormats]);
+
+  // Add event listener for dropdown changes
+  useEffect(() => {
+    const handleDropdownChange = (e: Event) => {
+      if ((e.target as HTMLElement)?.classList.contains('doc-enum-select')) {
+        setHasChanges(true);
+      }
+    };
+
+    const editor = editorRef.current;
+    if (editor) {
+      editor.addEventListener('change', handleDropdownChange, true);
+      return () =>
+        editor.removeEventListener('change', handleDropdownChange, true);
+    }
+  }, []);
 
   return {
     // State
@@ -176,6 +214,8 @@ export const useEditor = () => {
     hasChanges,
     error,
     xmlContent,
+    schemaInfo,
+    xsdContent, // Add this if you need access to raw XSD content
     editorRef,
 
     // Actions
