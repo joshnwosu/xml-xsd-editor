@@ -1,6 +1,6 @@
 import { SystemNavBar } from '@/components/system-navbar';
 import { FileManagerPanel } from '@/components/file-manager-panel';
-import { EditorPanel } from '@/components/editor-panel';
+import { XmlWysiwygEditor } from '@/components/xml-editor/xml-wysiwyg-editor';
 
 export default function HomePage() {
   return (
@@ -19,7 +19,9 @@ export default function HomePage() {
 
         {/* Right Panel - Editor (60% width) */}
         <div className='flex-[3] overflow-hidden'>
-          <EditorPanel />
+          <div className='w-full h-full flex flex-col overflow-hidden bg-white'>
+            <XmlWysiwygEditor />
+          </div>
         </div>
       </div>
     </div>

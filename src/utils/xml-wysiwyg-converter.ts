@@ -133,9 +133,9 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Convert XML content to WYSIWYG HTML format
+   * Convert XML content to WYSIWYG HTML format with input fields
    */
-  static xmlToWysiwyg(xmlContent: string): string {
+  static xmlToWysiwyg(xmlContent: string, isEditable: boolean = true): string {
     try {
       // Unescape HTML entities first
       const unescapedXml = this.unescapeHTML(xmlContent);
@@ -154,7 +154,7 @@ export class XmlWysiwygConverter {
       let html = '<div class="xml-document document-preview">';
 
       if (xmlDoc.documentElement) {
-        html += this.processNode(xmlDoc.documentElement, 0);
+        html += this.processNode(xmlDoc.documentElement, 0, isEditable);
       }
 
       html += '</div>';
@@ -167,9 +167,13 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Process XML node and convert to document-style HTML (enhanced with XSD info)
+   * Process XML node and convert to document-style HTML with proper input fields
    */
-  private static processNode(node: Element, level: number = 0): string {
+  private static processNode(
+    node: Element,
+    level: number = 0,
+    isEditable: boolean = true
+  ): string {
     let result = '';
 
     if (node.nodeType === Node.ELEMENT_NODE) {
@@ -183,44 +187,94 @@ export class XmlWysiwygConverter {
       // Handle different XML elements as document components
       if (level === 0) {
         // Root element as document title
-        result += `<h1 class="doc-title" contenteditable="true" data-xml-tag="${
-          node.tagName
-        }" data-level="${level}">${this.formatTagName(node.tagName)}</h1>`;
+        if (isEditable) {
+          result += `<div class="doc-title-container">
+            <label class="doc-field-label"><strong>Document Title:</strong></label>
+            <input type="text" class="doc-title-input" value="${this.formatTagName(
+              node.tagName
+            )}" 
+                   data-xml-tag="${node.tagName}" data-level="${level}" 
+                   placeholder="Enter document title" />
+          </div>`;
+        } else {
+          result += `<h1 class="doc-title" data-xml-tag="${
+            node.tagName
+          }" data-level="${level}">${this.formatTagName(node.tagName)}</h1>`;
+        }
       } else if (hasOnlyChildElements && level <= 2) {
         // Container elements as section headers (only if they have child elements and are not too deep)
         if (level === 1) {
-          result += `<h2 class="doc-section" contenteditable="true" data-xml-tag="${
-            node.tagName
-          }" data-level="${level}">${this.formatTagName(node.tagName)}</h2>`;
+          if (isEditable) {
+            result += `<div class="doc-section-container">
+              <label class="doc-field-label"><strong>Section:</strong></label>
+              <input type="text" class="doc-section-input" value="${this.formatTagName(
+                node.tagName
+              )}" 
+                     data-xml-tag="${node.tagName}" data-level="${level}" 
+                     placeholder="Enter section name" />
+              <button class="doc-add-button">+ Add ${node.tagName}</button>
+            </div>`;
+          } else {
+            result += `<h2 class="doc-section" data-xml-tag="${
+              node.tagName
+            }" data-level="${level}">${this.formatTagName(node.tagName)}</h2>`;
+          }
         } else if (level === 2) {
-          result += `<h3 class="doc-subsection" contenteditable="true" data-xml-tag="${
-            node.tagName
-          }" data-level="${level}">${this.formatTagName(node.tagName)}</h3>`;
+          if (isEditable) {
+            result += `<div class="doc-subsection-container">
+              <label class="doc-field-label"><strong>Subsection:</strong></label>
+              <input type="text" class="doc-subsection-input" value="${this.formatTagName(
+                node.tagName
+              )}" 
+                     data-xml-tag="${node.tagName}" data-level="${level}" 
+                     placeholder="Enter subsection name" />
+            </div>`;
+          } else {
+            result += `<h3 class="doc-subsection" data-xml-tag="${
+              node.tagName
+            }" data-level="${level}">${this.formatTagName(node.tagName)}</h3>`;
+          }
         }
       }
 
-      // Add attributes as metadata
+      // Add attributes as metadata with input fields
       if (node.attributes.length > 0) {
-        result += '<div class="doc-metadata" contenteditable="true">';
-        for (let i = 0; i < node.attributes.length; i++) {
-          const attr = node.attributes[i];
-          result += `<span class="doc-attr" data-attr-name="${
-            attr.name
-          }" data-attr-value="${attr.value}"><strong>${this.formatTagName(
-            attr.name
-          )}:</strong> ${attr.value}</span>`;
-          if (i < node.attributes.length - 1) result += ' | ';
+        if (isEditable) {
+          result += '<div class="doc-metadata-container">';
+          result +=
+            '<label class="doc-field-label"><strong>Attributes:</strong></label>';
+          result += '<div class="doc-metadata-inputs">';
+          for (let i = 0; i < node.attributes.length; i++) {
+            const attr = node.attributes[i];
+            result += `<div class="doc-attr-input-group">
+              <label class="doc-attr-label">${this.formatTagName(
+                attr.name
+              )}:</label>
+              <input type="text" class="doc-attr-input" 
+                     data-attr-name="${attr.name}" 
+                     value="${attr.value}" 
+                     placeholder="Enter ${this.formatTagName(attr.name)}" />
+            </div>`;
+          }
+          result += '</div></div>';
+        } else {
+          result += '<div class="doc-metadata">';
+          for (let i = 0; i < node.attributes.length; i++) {
+            const attr = node.attributes[i];
+            result += `<span class="doc-attr" data-attr-name="${
+              attr.name
+            }" data-attr-value="${attr.value}">
+              <strong>${this.formatTagName(attr.name)}:</strong> ${attr.value}
+            </span>`;
+            if (i < node.attributes.length - 1) result += ' | ';
+          }
+          result += '</div>';
         }
-        result += '</div>';
       }
 
-      // Handle text content
-      if (
-        node.textContent &&
-        node.textContent.trim() &&
-        node.children.length === 0
-      ) {
-        const text = node.textContent.trim();
+      // Handle text content with proper input fields
+      if (hasTextContent) {
+        const text = node?.textContent?.trim() as any;
         const tagName = node.tagName;
         const formattedTagName = this.formatTagName(tagName);
 
@@ -231,73 +285,91 @@ export class XmlWysiwygConverter {
         if (this.hasEnumeration(tagName)) {
           const enumValues = this.getEnumerationValues(tagName);
 
-          // Render as dropdown with enhanced features
           result += `<div class="doc-field-container" data-xml-tag="${tagName}" data-content="${text}" data-content-type="enum">`;
           result += `<label class="doc-field-label"><strong>${formattedTagName}:</strong></label>`;
 
           // Add documentation if available
           if (additionalInfo.hasDocumentation) {
-            result += `<div class="doc-field-help" title="${additionalInfo.hasDocumentation}">ℹ️</div>`;
+            result += `<div class="doc-field-help" title="${'Additional information available'}">ℹ️</div>`;
           }
 
-          result += `<select class="doc-enum-select" data-xml-tag="${tagName}" data-content="${text}">`;
-          enumValues.forEach((value) => {
-            const selected = value === text ? 'selected' : '';
-            result += `<option value="${value}" ${selected}>${value}</option>`;
-          });
-          result += '</select></div>';
+          if (isEditable) {
+            result += `<select class="doc-enum-select" data-xml-tag="${tagName}" data-content="${text}">`;
+            enumValues.forEach((value) => {
+              const selected = value === text ? 'selected' : '';
+              result += `<option value="${value}" ${selected}>${value}</option>`;
+            });
+            result += '</select>';
+          } else {
+            result += `<span class="doc-enum-value">${text}</span>`;
+          }
+          result += '</div>';
         } else {
-          // Format different types of content with data attributes for reverse mapping
-          // Order matters here - check most specific patterns first
-          if (this.isEmail(text)) {
-            result += `<p class="doc-email" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="email"><strong>${formattedTagName}:</strong> <a href="mailto:${text}">${text}</a></p>`;
-          } else if (this.isUrl(text)) {
-            result += `<p class="doc-url" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="url"><strong>${formattedTagName}:</strong> <a href="${text}" target="_blank" rel="noopener noreferrer">${text}</a></p>`;
-          } else if (this.isCurrency(text)) {
-            result += `<p class="doc-currency" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="currency"><strong>${formattedTagName}:</strong> <span class="currency-value">${text}</span></p>`;
-          } else if (this.isTime(text)) {
-            result += `<p class="doc-time" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="time"><strong>${formattedTagName}:</strong> <span class="time-value">${text}</span></p>`;
-          } else if (this.isDate(text)) {
-            result += `<p class="doc-date" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="date"><strong>${formattedTagName}:</strong> <span class="date-value">${this.formatDate(
-              text
-            )}</span></p>`;
-          } else if (this.isPhone(text)) {
-            result += `<p class="doc-phone" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="phone"><strong>${formattedTagName}:</strong><span class="phone-value">${text}</span></p>`;
-          } else if (this.isNumber(text)) {
-            result += `<p class="doc-number" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="number"><strong>${formattedTagName}:</strong> ${text}</p>`;
-          } else if (text.length > 100) {
-            result += `<div class="doc-paragraph-container" data-xml-tag="${tagName}" data-content="${text}" data-content-type="paragraph">`;
-            result += `<label class="doc-field-label"><strong>${formattedTagName}:</strong></label>`;
+          // Create appropriate input fields based on content type
+          const inputType = this.getInputType(text);
+          const contentType = this.getContentType(text);
 
+          result += `<div class="doc-field-container" data-xml-tag="${tagName}" data-content="${text}" data-content-type="${contentType}">`;
+          result += `<label class="doc-field-label"><strong>${formattedTagName}:</strong></label>`;
+
+          // Add documentation if available
+          if (additionalInfo.hasDocumentation) {
+            result += `<div class="doc-field-help" title="${'Additional information available'}">ℹ️</div>`;
+          }
+
+          if (isEditable) {
             // Add validation attributes if available
             let validationAttrs = '';
             if (additionalInfo.minLength)
-              validationAttrs += ` data-min-length="${additionalInfo.minLength}"`;
+              validationAttrs += ` data-min-length="${additionalInfo.minLength}" minlength="${additionalInfo.minLength}"`;
             if (additionalInfo.maxLength)
-              validationAttrs += ` data-max-length="${additionalInfo.maxLength}"`;
+              validationAttrs += ` data-max-length="${additionalInfo.maxLength}" maxlength="${additionalInfo.maxLength}"`;
             if (additionalInfo.pattern)
-              validationAttrs += ` data-pattern="${additionalInfo.pattern}"`;
+              validationAttrs += ` data-pattern="${additionalInfo.pattern}" pattern="${additionalInfo.pattern}"`;
 
-            result += `<div class="doc-paragraph" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}"${validationAttrs}>${text}</div>`;
-            result += '</div>';
+            if (text.length > 100 || contentType === 'paragraph') {
+              result += `<textarea class="doc-textarea-input" 
+                         data-xml-tag="${tagName}" 
+                         data-content="${text}"
+                         placeholder="Enter ${formattedTagName.toLowerCase()}"
+                         rows="4"${validationAttrs}>${text}</textarea>`;
+            } else {
+              result += `<input type="${inputType}" 
+                         class="doc-text-input" 
+                         data-xml-tag="${tagName}" 
+                         data-content="${text}"
+                         data-content-type="${contentType}"
+                         value="${text}" 
+                         placeholder="Enter ${formattedTagName.toLowerCase()}"${validationAttrs} />`;
+            }
           } else {
-            // Add validation attributes for regular fields too
-            let validationAttrs = '';
-            if (additionalInfo.minLength)
-              validationAttrs += ` data-min-length="${additionalInfo.minLength}"`;
-            if (additionalInfo.maxLength)
-              validationAttrs += ` data-max-length="${additionalInfo.maxLength}"`;
-            if (additionalInfo.pattern)
-              validationAttrs += ` data-pattern="${additionalInfo.pattern}"`;
-
-            result += `<p class="doc-field" contenteditable="true" data-xml-tag="${tagName}" data-content="${text}" data-content-type="field"${validationAttrs}><strong>${formattedTagName}:</strong> ${text}</p>`;
+            // Display-only version with formatted content
+            if (contentType === 'email') {
+              result += `<a href="mailto:${text}" class="doc-email-link">${text}</a>`;
+            } else if (contentType === 'url') {
+              result += `<a href="${text}" target="_blank" rel="noopener noreferrer" class="doc-url-link">${text}</a>`;
+            } else if (contentType === 'phone') {
+              result += `<a href="tel:${text}" class="doc-phone-link">${text}</a>`;
+            } else if (contentType === 'date') {
+              result += `<span class="doc-date-value">${this.formatDate(
+                text
+              )}</span>`;
+            } else if (contentType === 'currency') {
+              result += `<span class="doc-currency-value">${text}</span>`;
+            } else if (contentType === 'time') {
+              result += `<span class="doc-time-value">${text}</span>`;
+            } else {
+              result += `<span class="doc-field-value">${text}</span>`;
+            }
           }
+
+          result += '</div>';
         }
       } else if (node.children.length > 0) {
         // Process child elements
         result += `<div class="doc-content" data-xml-tag="${node.tagName}" data-level="${level}">`;
         Array.from(node.children).forEach((child) => {
-          result += this.processNode(child as Element, level + 1);
+          result += this.processNode(child as Element, level + 1, isEditable);
         });
         result += '</div>';
       }
@@ -307,7 +379,35 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Convert WYSIWYG HTML back to XML
+   * Get appropriate HTML input type based on content
+   */
+  private static getInputType(text: string): string {
+    if (this.isEmail(text)) return 'email';
+    if (this.isUrl(text)) return 'url';
+    if (this.isPhone(text)) return 'tel';
+    if (this.isDate(text)) return 'date';
+    if (this.isTime(text)) return 'time';
+    if (this.isNumber(text)) return 'number';
+    return 'text';
+  }
+
+  /**
+   * Get content type classification
+   */
+  private static getContentType(text: string): string {
+    if (this.isEmail(text)) return 'email';
+    if (this.isUrl(text)) return 'url';
+    if (this.isPhone(text)) return 'phone';
+    if (this.isDate(text)) return 'date';
+    if (this.isTime(text)) return 'time';
+    if (this.isCurrency(text)) return 'currency';
+    if (this.isNumber(text)) return 'number';
+    if (text.length > 100) return 'paragraph';
+    return 'text';
+  }
+
+  /**
+   * Convert WYSIWYG HTML back to XML (updated to handle input fields)
    */
   static wysiwygToXml(htmlContent: string): string {
     try {
@@ -334,11 +434,13 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Build XML from document structure
+   * Build XML from document structure (updated to handle input fields)
    */
   private static buildXmlFromDocument(container: Element): string {
-    // Find the root element (should be the title element)
-    const titleElement = container.querySelector('h1[data-xml-tag]');
+    // Find the root element (could be title input or h1 element)
+    const titleElement = container.querySelector(
+      'input[data-xml-tag], h1[data-xml-tag]'
+    );
     if (!titleElement) {
       throw new Error('No root XML element found');
     }
@@ -353,7 +455,7 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Build XML element recursively
+   * Build XML element recursively (updated to handle input fields)
    */
   private static buildXmlElement(
     container: Element,
@@ -362,11 +464,25 @@ export class XmlWysiwygConverter {
   ): string {
     let xml = `<${tagName}`;
 
-    // Find and add attributes for this level
-    const attributesElements = container.querySelectorAll(
+    // Find and add attributes for this level from input fields
+    const attributeInputs = container.querySelectorAll(`input[data-attr-name]`);
+    attributeInputs.forEach((input) => {
+      const inputElement = input as HTMLInputElement;
+      const attrName = inputElement.getAttribute('data-attr-name');
+      const attrValue =
+        inputElement.value ||
+        inputElement.getAttribute('data-attr-value') ||
+        '';
+      if (attrName && attrValue) {
+        xml += ` ${attrName}="${this.escapeXmlAttribute(attrValue)}"`;
+      }
+    });
+
+    // Also check for non-editable attributes
+    const attributeElements = container.querySelectorAll(
       `[data-xml-tag="${tagName}"] .doc-metadata .doc-attr`
     );
-    attributesElements.forEach((attrElement) => {
+    attributeElements.forEach((attrElement) => {
       const attrName = attrElement.getAttribute('data-attr-name');
       const attrValue = attrElement.getAttribute('data-attr-value');
       if (attrName && attrValue) {
@@ -374,38 +490,56 @@ export class XmlWysiwygConverter {
       }
     });
 
-    // Find content elements for this tag (including dropdowns)
+    // Find content elements for this tag (including various input types)
+    const textInputs = container.querySelectorAll(
+      `input[data-xml-tag="${tagName}"], textarea[data-xml-tag="${tagName}"]`
+    );
+    const selectElements = container.querySelectorAll(
+      `select[data-xml-tag="${tagName}"]`
+    );
     const contentElements = container.querySelectorAll(
       `[data-xml-tag="${tagName}"][data-content]`
-    );
-    const dropdownElements = container.querySelectorAll(
-      `[data-xml-tag="${tagName}"].doc-enum-select`
     );
     const childContainers = container.querySelectorAll(
       `[data-xml-tag="${tagName}"] .doc-content`
     );
 
-    if (contentElements.length > 0 || dropdownElements.length > 0) {
+    if (
+      textInputs.length > 0 ||
+      selectElements.length > 0 ||
+      contentElements.length > 0
+    ) {
       // Has text content
       xml += '>';
 
-      // Handle regular content elements
-      contentElements.forEach((contentElement) => {
+      // Handle text inputs
+      textInputs.forEach((input) => {
+        const inputElement = input as HTMLInputElement | HTMLTextAreaElement;
         const content =
-          contentElement.getAttribute('data-content') ||
-          contentElement.textContent?.trim() ||
-          '';
+          inputElement.value || inputElement.getAttribute('data-content') || '';
         xml += this.escapeXmlContent(content);
       });
 
-      // Handle dropdown elements
-      dropdownElements.forEach((dropdownElement) => {
-        const selectElement = dropdownElement as HTMLSelectElement;
+      // Handle select elements
+      selectElements.forEach((select) => {
+        const selectElement = select as HTMLSelectElement;
         const selectedValue =
           selectElement.value ||
           selectElement.getAttribute('data-content') ||
           '';
         xml += this.escapeXmlContent(selectedValue);
+      });
+
+      // Handle regular content elements (for non-editable mode)
+      contentElements.forEach((contentElement) => {
+        // Skip if we already handled this as an input
+        if (!textInputs.length && !selectElements.length) {
+          const content =
+            contentElement.getAttribute('data-content') ||
+            contentElement.textContent?.trim() ||
+            '';
+          xml += this.escapeXmlContent(content);
+        }
       });
 
       xml += `</${tagName}>`;
@@ -435,7 +569,7 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Utility functions for content type detection
+   * Utility functions for content type detection (unchanged)
    */
   private static isEmail(text: string): boolean {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -447,7 +581,6 @@ export class XmlWysiwygConverter {
       new URL(text);
       return true;
     } catch {
-      // Fallback to regex for partial URLs
       const urlRegex =
         /^(https?:\/\/)?(www\.)?[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}(\/.*)?$/;
       return urlRegex.test(text) && text.includes('.');
@@ -455,15 +588,11 @@ export class XmlWysiwygConverter {
   }
 
   private static isPhone(text: string): boolean {
-    // More specific phone regex that handles common formats
     const phoneRegex = /^[\+]?[1-9][\d\-\s\(\)]{8,}[\d]$/;
-
-    // Additional check: should contain digits and common phone separators
     const hasDigits = /\d/.test(text);
     const hasPhoneChars = /^[\+\d\-\s\(\)]+$/.test(text);
     const digitCount = (text.match(/\d/g) || []).length;
 
-    // Must have at least 7 digits (minimum phone number) and at most 15 (international standard)
     return (
       phoneRegex.test(text) &&
       hasDigits &&
@@ -474,45 +603,26 @@ export class XmlWysiwygConverter {
   }
 
   private static isDate(text: string): boolean {
-    // Check for common date formats first
     const dateFormats = [
-      /^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/, // MM/DD/YYYY or MM-DD-YYYY
-      /^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}$/, // YYYY/MM/DD or YYYY-MM-DD
-      /^\d{1,2}[-\/]\d{1,2}[-\/]\d{2}$/, // MM/DD/YY or MM-DD-YY
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/, // ISO format
+      /^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/,
+      /^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}$/,
+      /^\d{1,2}[-\/]\d{1,2}[-\/]\d{2}$/,
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
     ];
 
-    // First check if it matches common date patterns
     const matchesDateFormat = dateFormats.some((regex) => regex.test(text));
+    if (!matchesDateFormat) return false;
 
-    if (!matchesDateFormat) {
-      return false;
-    }
-
-    // Then check if it's actually parseable as a date
     const parsedDate = new Date(text);
     return !isNaN(parsedDate.getTime()) && text.length > 6;
   }
 
   private static isNumber(text: string): boolean {
-    // More precise number detection
     const trimmedText = text.trim();
-
-    // Check if it's a valid number but exclude pure dates and phone patterns
-    if (isNaN(Number(trimmedText)) || trimmedText === '') {
+    if (isNaN(Number(trimmedText)) || trimmedText === '') return false;
+    if (/\d+[-\/]\d+[-\/]\d+/.test(trimmedText)) return false;
+    if (/^[\+]/.test(trimmedText) || /\d+[-\s\(\)]\d+/.test(trimmedText))
       return false;
-    }
-
-    // Exclude if it looks like a date (contains slashes or dashes with specific patterns)
-    if (/\d+[-\/]\d+[-\/]\d+/.test(trimmedText)) {
-      return false;
-    }
-
-    // Exclude if it looks like a phone number (starts with + or has typical phone formatting)
-    if (/^[\+]/.test(trimmedText) || /\d+[-\s\(\)]\d+/.test(trimmedText)) {
-      return false;
-    }
-
     return true;
   }
 
@@ -546,7 +656,7 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Utility functions for escaping/unescaping
+   * Utility functions for escaping/unescaping (unchanged)
    */
   private static unescapeHTML(str: string): string {
     return str
@@ -577,15 +687,14 @@ export class XmlWysiwygConverter {
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xml, 'text/xml');
 
-      // Check for parsing errors
       const parseError = xmlDoc.querySelector('parsererror');
       if (parseError) {
-        return xml; // Return original if formatting fails
+        return xml;
       }
 
       return this.serializeXmlWithFormatting(xmlDoc.documentElement, 0);
     } catch (error) {
-      return xml; // Return original if formatting fails
+      return xml;
     }
   }
 
@@ -604,7 +713,6 @@ export class XmlWysiwygConverter {
       xml += ` ${attr.name}="${attr.value}"`;
     }
 
-    // Check if element has children
     const children = Array.from(element.childNodes);
     const hasElementChildren = children.some(
       (child) => child.nodeType === Node.ELEMENT_NODE
@@ -614,7 +722,6 @@ export class XmlWysiwygConverter {
     if (children.length === 0) {
       xml += '/>';
     } else if (!hasElementChildren && textContent) {
-      // Text-only element
       xml += `>${textContent}</${tagName}>`;
     } else {
       xml += '>\n';

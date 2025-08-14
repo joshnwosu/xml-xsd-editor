@@ -79,6 +79,27 @@ export const EditorStyles: React.FC = () => {
         margin: 20px 0 10px 0;
         border-left: 4px solid #3498db;
         padding-left: 10px;
+
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+
+      .doc-add-button {
+        padding: 10px 20px;
+        background-color: #3498db;
+        color: #fff;
+        border-radius: 8px;
+        margin-left: 10px;
+        font-size: 14px;
+        font-weight: 400;
+        cursor: pointer;
+        
+      }
+
+      .doc-add-button:hover {
+        background-color: #007bff;
       }
       
       .doc-subsection {
@@ -465,6 +486,32 @@ export const EditorStyles: React.FC = () => {
         text-align: center;
         padding: 20px;
       }
+
+      .doc-field-container {
+        margin: 8px 0;
+        padding: 4px 0;
+      }
+
+      .doc-field-label {
+        font-weight: bold;
+        margin-right: 8px;
+      }
+
+      .doc-enum-select {
+        padding: 4px 8px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        background: white;
+        font-family: inherit;
+        font-size: inherit;
+        cursor: pointer;
+      }
+
+      .doc-enum-select:focus {
+        outline: none;
+        border-color: #3498db;
+      }
+
     `}</style>
   );
 };
