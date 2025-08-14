@@ -5,7 +5,7 @@ import { CodeViewer } from '../code-viewer';
 
 interface XsdTabProps {
   xsdContent: string;
-  onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileUpload: () => void;
 }
 
 export const XsdTab: React.FC<XsdTabProps> = ({ xsdContent, onFileUpload }) => {
@@ -21,18 +21,13 @@ export const XsdTab: React.FC<XsdTabProps> = ({ xsdContent, onFileUpload }) => {
             <p className='text-sm text-gray-500 mb-6'>
               Import an XSD file using the menu bar or upload one directly
             </p>
-            <input
-              type='file'
-              accept='.xsd'
-              onChange={onFileUpload}
-              className='hidden'
-              id='xsd-upload-direct'
-            />
-            <Button variant='outline' asChild>
-              <label htmlFor='xsd-upload-direct' className='cursor-pointer'>
-                <Upload className='w-4 h-4 mr-2' />
-                Upload XSD File
-              </label>
+            <Button
+              variant='outline'
+              className='cursor-pointer'
+              onClick={onFileUpload}
+            >
+              <Upload className='w-4 h-4 mr-2' />
+              Upload XSD File
             </Button>
           </div>
         </div>

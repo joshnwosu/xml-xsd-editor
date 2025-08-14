@@ -19,7 +19,7 @@ export default function HomePage() {
 
         {/* Right Panel - Editor (60% width) */}
         <div className='flex-[3] overflow-hidden'>
-          <div className='w-full h-full flex flex-col overflow-hidden bg-white'>
+          <div className='w-full h-full flex flex-col overflow-hidde'>
             <XmlWysiwygEditor />
           </div>
         </div>

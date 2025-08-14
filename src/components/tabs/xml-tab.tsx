@@ -5,7 +5,7 @@ import { CodeViewer } from '../code-viewer';
 
 interface XmlTabProps {
   xmlContent: string;
-  onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileUpload: () => void;
 }
 
 export const XmlTab: React.FC<XmlTabProps> = ({ xmlContent, onFileUpload }) => {
@@ -21,18 +21,14 @@ export const XmlTab: React.FC<XmlTabProps> = ({ xmlContent, onFileUpload }) => {
             <p className='text-sm text-gray-500 mb-6'>
               Import an XML file using the menu bar or upload one directly
             </p>
-            <input
-              type='file'
-              accept='.xml'
-              onChange={onFileUpload}
-              className='hidden'
-              id='xml-upload-direct'
-            />
-            <Button variant='outline' asChild>
-              <label htmlFor='xml-upload-direct' className='cursor-pointer'>
-                <Upload className='w-4 h-4 mr-2' />
-                Upload XML File
-              </label>
+
+            <Button
+              variant='outline'
+              className='cursor-pointer'
+              onClick={onFileUpload}
+            >
+              <Upload className='w-4 h-4 mr-2' />
+              Upload XML File
             </Button>
           </div>
         </div>

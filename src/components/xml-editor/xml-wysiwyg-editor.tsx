@@ -32,7 +32,7 @@ export const XmlWysiwygEditor: React.FC = () => {
   } = useEditor();
 
   return (
-    <div className='w-full h-full flex flex-col bg-gray-50'>
+    <div className='w-full h-full flex flex-col'>
       {/* EditorToolbar - only show in WYSIWYG mode AND when activeTab is 'pdf' */}
       {viewMode === 'wysiwyg' && activeTab === 'pdf' && (
         <EditorToolbar

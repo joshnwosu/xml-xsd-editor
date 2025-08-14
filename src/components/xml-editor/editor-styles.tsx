@@ -79,12 +79,10 @@ export const EditorStyles: React.FC = () => {
         margin: 20px 0 10px 0;
         border-left: 4px solid #3498db;
         padding-left: 10px;
-
         display: flex;
         justify-content: space-between;
         align-items: center;
       }
-
 
       .doc-add-button {
         padding: 10px 20px;
@@ -95,11 +93,25 @@ export const EditorStyles: React.FC = () => {
         font-size: 14px;
         font-weight: 400;
         cursor: pointer;
-        
       }
 
       .doc-add-button:hover {
         background-color: #007bff;
+      }
+
+      .doc-delete-button {
+        padding: 6px 12px;
+        background-color: #dc3545;
+        color: #fff;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 400;
+        cursor: pointer;
+        border: none;
+      }
+
+      .doc-delete-button:hover {
+        background-color: #c82333;
       }
       
       .doc-subsection {
@@ -138,8 +150,6 @@ export const EditorStyles: React.FC = () => {
         margin: 8px 0;
         padding: 6px 0;
       }
-      
-
       
       .doc-phone {
         margin: 8px 0;
@@ -210,7 +220,6 @@ export const EditorStyles: React.FC = () => {
         font-family: monospace;
       }
       
-      /* Paragraphs */
       .doc-paragraph {
         font-size: 16px;
         line-height: 1.6;
@@ -233,7 +242,6 @@ export const EditorStyles: React.FC = () => {
         outline-offset: 2px;
       }
       
-      /* Lists */
       .doc-list {
         margin: 1.5rem 0;
         padding-left: 0;
@@ -280,12 +288,10 @@ export const EditorStyles: React.FC = () => {
         outline-offset: 2px;
       }
       
-      /* Sections */
       .doc-section {
         margin: 2rem 0;
       }
       
-      /* Quotes */
       .doc-quote {
         border-left: 4px solid #d1d5db;
         padding-left: 2rem;
@@ -314,7 +320,6 @@ export const EditorStyles: React.FC = () => {
         outline-offset: 2px;
       }
       
-      /* Code blocks */
       .doc-code {
         background: #f3f4f6;
         border: 1px solid #d1d5db;
@@ -334,7 +339,6 @@ export const EditorStyles: React.FC = () => {
         outline-offset: 2px;
       }
       
-      /* Tables */
       .doc-table {
         width: 100%;
         border-collapse: collapse;
@@ -350,12 +354,13 @@ export const EditorStyles: React.FC = () => {
         padding: 0.75rem 1rem;
         border-right: 1px solid #e5e7eb;
         text-align: left;
-        vertical-align: top;
+        vertical-align: middle;
       }
       
       .doc-table th {
         background: #f9fafb;
         font-weight: bold;
+        color: #34495e;
       }
       
       .doc-table tr {
@@ -371,13 +376,32 @@ export const EditorStyles: React.FC = () => {
         border-right: none;
       }
       
-      .doc-table td:focus {
+      .doc-table td:focus-within {
         background: #f3f4f6;
         outline: 2px solid #3b82f6;
         outline-offset: -2px;
       }
       
-      /* Links */
+      .doc-table input,
+      .doc-table textarea,
+      .doc-table select {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 4px 8px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        background: white;
+        font-family: inherit;
+        font-size: inherit;
+      }
+      
+      .doc-table input:focus,
+      .doc-table textarea:focus,
+      .doc-table select:focus {
+        outline: none;
+        border-color: #3498db;
+      }
+      
       .doc-link {
         color: #2563eb;
         text-decoration: underline;
@@ -397,7 +421,6 @@ export const EditorStyles: React.FC = () => {
         border-radius: 0.125rem;
       }
       
-      /* Images */
       .doc-image {
         max-width: 100%;
         height: auto;
@@ -411,7 +434,6 @@ export const EditorStyles: React.FC = () => {
         outline-offset: 2px;
       }
       
-      /* Emphasis */
       .doc-emphasis,
       em {
         font-style: italic;
@@ -424,7 +446,6 @@ export const EditorStyles: React.FC = () => {
         color: #111827;
       }
       
-      /* Focus states for better accessibility */
       [contenteditable]:focus {
         outline: none;
       }
@@ -435,7 +456,6 @@ export const EditorStyles: React.FC = () => {
         border-radius: 0.25rem;
       }
       
-      /* Print styles */
       @media print {
         .document-editor {
           box-shadow: none !important;
@@ -458,9 +478,13 @@ export const EditorStyles: React.FC = () => {
         .doc-section {
           page-break-inside: avoid;
         }
+        
+        .doc-add-button,
+        .doc-delete-button {
+          display: none;
+        }
       }
       
-      /* No content state */
       .no-xml-content {
         display: flex;
         align-items: center;
@@ -512,6 +536,21 @@ export const EditorStyles: React.FC = () => {
         border-color: #3498db;
       }
 
+      .doc-text-input,
+      .doc-textarea-input {
+        padding: 4px 8px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        background: white;
+        font-family: inherit;
+        font-size: inherit;
+      }
+
+      .doc-text-input:focus,
+      .doc-textarea-input:focus {
+        outline: none;
+        border-color: #3498db;
+      }
     `}</style>
   );
 };
