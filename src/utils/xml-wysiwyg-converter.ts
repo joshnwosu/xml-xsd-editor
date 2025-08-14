@@ -9,12 +9,14 @@ export interface SchemaInfo {
   [tagName: string]: {
     type?: 'enum' | 'string' | 'number' | 'date';
     enumValues?: string[];
+    defaultValue?: string;
   };
 }
 
 export class XmlWysiwygConverter {
   private static schemaInfo: SchemaInfo = {};
   private static xsdContent: string = '';
+  private static boundClickHandler: ((event: Event) => void) | null = null;
 
   /**
    * Set schema information for dropdown rendering
@@ -23,6 +25,157 @@ export class XmlWysiwygConverter {
     this.schemaInfo = schema;
     if (xsdContent) {
       this.xsdContent = xsdContent;
+    }
+    // Initialize event handlers after DOM is ready
+    setTimeout(() => this.initializeEventHandlers(), 100);
+  }
+
+  /**
+   * Initialize event handlers for add/delete buttons
+   */
+  private static initializeEventHandlers(): void {
+    // Remove existing listener if it exists
+    if (this.boundClickHandler) {
+      document.removeEventListener('click', this.boundClickHandler);
+    }
+
+    // Create bound function and store reference
+    this.boundClickHandler = this.handleGlobalClick.bind(this);
+
+    // Add global click listener
+    document.addEventListener('click', this.boundClickHandler);
+  }
+
+  /**
+   * Handle all click events globally
+   */
+  private static handleGlobalClick(event: Event): void {
+    const target = event.target as HTMLElement;
+
+    if (target.classList.contains('doc-add-button')) {
+      event.preventDefault();
+      this.handleAddButton(target);
+    } else if (target.classList.contains('doc-delete-button')) {
+      event.preventDefault();
+      this.handleDeleteButton(target);
+    }
+  }
+
+  /**
+   * Handle add button click - add new row to table
+   */
+  private static handleAddButton(button: HTMLElement): void {
+    // Find the table container
+    const tableContainer = button.closest('.doc-table-container');
+    if (!tableContainer) return;
+
+    // Find the table body
+    const tableBody = tableContainer.querySelector('table tbody');
+    if (!tableBody) return;
+
+    // Get the structure from existing rows or create default
+    const existingRow = tableBody.querySelector('tr');
+    if (!existingRow) return;
+
+    // Extract column structure from header or existing row
+    const columns = this.getTableColumns(tableContainer);
+
+    // Create new empty row
+    const newRow = document.createElement('tr');
+    newRow.innerHTML = this.generateEmptyTableRow(columns);
+
+    // Add to table
+    tableBody.appendChild(newRow);
+
+    // Focus first input
+    const firstInput = newRow.querySelector(
+      'input, select, textarea'
+    ) as HTMLElement;
+    if (firstInput) {
+      firstInput.focus();
+    }
+  }
+
+  /**
+   * Get table columns from existing structure
+   */
+  private static getTableColumns(tableContainer: Element): string[] {
+    const headers = tableContainer.querySelectorAll('th');
+    const columns: string[] = [];
+
+    headers.forEach((header) => {
+      const text = header.textContent?.trim();
+      if (text && text !== 'Actions') {
+        // Convert display name back to tag name
+        const tagName = this.displayNameToTagName(text);
+        columns.push(tagName);
+      }
+    });
+
+    return columns;
+  }
+
+  /**
+   * Convert display name back to tag name (reverse of formatTagName)
+   */
+  private static displayNameToTagName(displayName: string): string {
+    return displayName
+      .toLowerCase()
+      .replace(/\s+/g, '')
+      .replace(/^(.)/, (match) => match.toUpperCase());
+  }
+
+  /**
+   * Generate empty table row HTML
+   */
+  private static generateEmptyTableRow(columns: string[]): string {
+    let html = '';
+
+    columns.forEach((tagName) => {
+      const schemaInfo = this.schemaInfo[tagName] || {};
+      const defaultValue = schemaInfo.defaultValue || '';
+      const formattedTagName = this.formatTagName(tagName);
+
+      html += `<td data-xml-tag="${tagName}" data-content="${defaultValue}" data-content-type="text">`;
+
+      if (this.hasEnumeration(tagName)) {
+        // Create dropdown for enum fields
+        const enumValues = this.getEnumerationValues(tagName);
+        html += `<select class="doc-enum-select" data-xml-tag="${tagName}" data-content="">`;
+        html += `<option value="">Select ${formattedTagName}</option>`;
+        enumValues.forEach((value) => {
+          html += `<option value="${value}">${value}</option>`;
+        });
+        html += '</select>';
+      } else {
+        // Create input field
+        const inputType = this.getInputType(defaultValue || 'text');
+        html += `<input type="${inputType}" 
+                  class="doc-text-input" 
+                  data-xml-tag="${tagName}" 
+                  data-content=""
+                  data-content-type="text"
+                  value="" 
+                  placeholder="Enter ${formattedTagName.toLowerCase()}" />`;
+      }
+
+      html += '</td>';
+    });
+
+    // Add delete button column
+    html +=
+      '<td><button class="doc-delete-button" type="button">Delete</button></td>';
+
+    return html;
+  }
+
+  /**
+   * Handle delete button click
+   */
+  private static handleDeleteButton(button: HTMLElement): void {
+    const row = button.closest('tr');
+    if (row && confirm('Are you sure you want to delete this row?')) {
+      row.remove();
     }
   }
 
@@ -68,6 +221,7 @@ export class XmlWysiwygConverter {
     pattern?: string;
     minLength?: number;
     maxLength?: number;
+    documentation?: string;
   } {
     if (!this.xsdContent) return {};
 
@@ -147,6 +301,10 @@ export class XmlWysiwygConverter {
         html += this.processNode(xmlDoc.documentElement, 0, isEditable);
       }
       html += '</div>';
+
+      // Initialize event handlers after HTML is rendered
+      setTimeout(() => this.initializeEventHandlers(), 100);
+
       return html;
     } catch (error) {
       return `<div class="xml-error">Error converting XML: ${
@@ -199,14 +357,16 @@ export class XmlWysiwygConverter {
         }
       } else if (isCollection && level <= 2) {
         // Handle collection of repeated elements as a table
+        const childTagName = node.children[0]?.tagName;
         result += `<div class="doc-table-container" data-xml-tag="${node.tagName}" data-level="${level}">`;
+
         if (isEditable) {
           result += `<div class="doc-section-container">
-            <label class="doc-field-label"><strong>${this.formatTagName(
+            <label class="doc-field-label hidden"><strong>${this.formatTagName(
               node.tagName
             )}:</strong></label>
-            <button class="doc-add-button">+ Add ${this.formatTagName(
-              node.tagName
+            <button class="doc-add-button" type="button">Add ${this.formatTagName(
+              childTagName
             )}</button>
           </div>`;
         } else {
@@ -216,7 +376,6 @@ export class XmlWysiwygConverter {
         }
 
         // Create table for repeated elements
-        const childTagName = node.children[0]?.tagName;
         if (childTagName) {
           const headers = Array.from(node.children[0].children).map(
             (child) => child.tagName
@@ -308,7 +467,7 @@ export class XmlWysiwygConverter {
             });
             if (isEditable) {
               result +=
-                '<td><button class="doc-delete-button">Delete</button></td>';
+                '<td><button class="doc-delete-button" type="button">Delete</button></td>';
             }
             result += '</tr>';
           });
@@ -327,7 +486,6 @@ export class XmlWysiwygConverter {
               )}" 
                      data-xml-tag="${node.tagName}" data-level="${level}" 
                      placeholder="Enter section name" />
-              <button class="doc-add-button">+ Add ${node.tagName}</button>
             </div>`;
           } else {
             result += `<h2 class="doc-section" data-xml-tag="${
