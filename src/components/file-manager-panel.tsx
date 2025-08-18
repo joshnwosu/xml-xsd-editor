@@ -45,7 +45,13 @@ export const FileManagerPanel: React.FC = () => {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'pdf':
-        return <PdfTab pdfFile={pdfFile} onFileUpload={handleImportXml} />;
+        return (
+          <PdfTab
+            pdfFile={pdfFile}
+            xmlContent={xmlContent}
+            onFileUpload={handleImportXml}
+          />
+        );
       case 'xml':
         return (
           <XmlTab xmlContent={xmlContent} onFileUpload={handleImportXml} />
