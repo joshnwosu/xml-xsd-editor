@@ -9,16 +9,8 @@ import { CustomTabs } from './tabs/custom-tab';
 import { useFileStore } from '@/store/file-store';
 
 export const FileManagerPanel: React.FC = () => {
-  const {
-    xmlContent,
-    xsdContent,
-    pdfFile,
-    activeTab,
-    setXmlContent,
-    setXsdContent,
-    setPdfFile,
-    setActiveTab,
-  } = useFileStore();
+  const { xmlContent, xsdContent, pdfFile, activeTab, setActiveTab } =
+    useFileStore();
 
   const tabs = [
     {
