@@ -9,16 +9,8 @@ import { CustomTabs } from './tabs/custom-tab';
 import { useFileStore } from '@/store/file-store';
 
 export const FileManagerPanel: React.FC = () => {
-  const {
-    xmlContent,
-    xsdContent,
-    pdfFile,
-    activeTab,
-    setXmlContent,
-    setXsdContent,
-    setPdfFile,
-    setActiveTab,
-  } = useFileStore();
+  const { xmlContent, xsdContent, pdfFile, activeTab, setActiveTab } =
+    useFileStore();
 
   const tabs = [
     {
@@ -50,46 +42,10 @@ export const FileManagerPanel: React.FC = () => {
     importFile('xsd');
   };
 
-  const handleFileUpload = (
-    event: React.ChangeEvent<HTMLInputElement>,
-    fileType: 'xml' | 'xsd' | 'pdf'
-  ) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (fileType === 'pdf') {
-      setPdfFile(file);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
-      // Escape HTML for display
-      const escapedContent = content
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-
-      if (fileType === 'xml') {
-        setXmlContent(escapedContent);
-      } else if (fileType === 'xsd') {
-        setXsdContent(escapedContent);
-      }
-    };
-    reader.readAsText(file);
-  };
-
   const renderTabContent = () => {
     switch (activeTab) {
       case 'pdf':
-        return (
-          <PdfTab
-            pdfFile={pdfFile}
-            onFileUpload={(e) => handleFileUpload(e, 'pdf')}
-          />
-        );
+        return <PdfTab pdfFile={pdfFile} onFileUpload={handleImportXml} />;
       case 'xml':
         return (
           <XmlTab xmlContent={xmlContent} onFileUpload={handleImportXml} />

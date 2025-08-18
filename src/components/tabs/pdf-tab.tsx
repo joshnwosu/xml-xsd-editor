@@ -1,37 +1,34 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Upload, FileText } from 'lucide-react';
+import { FileText, Upload } from 'lucide-react';
 
 interface PdfTabProps {
   pdfFile: File | null;
-  onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileUpload: () => void;
 }
 
 export const PdfTab: React.FC<PdfTabProps> = ({ pdfFile, onFileUpload }) => {
   return (
-    <div className='space-y-4 p-8'>
-      <div className='text-center py-8'>
-        <FileText className='mx-auto h-12 w-12 text-gray-400 mb-4 stroke-1' />
-        <p className='text-muted-foreground'>PDF feature coming soon...</p>
-      </div>
-      <div className='border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hidden'>
-        <FileText className='mx-auto h-12 w-12 text-gray-400 mb-4' />
-        <p className='text-sm text-gray-600 mb-4'>
-          Upload a PDF file to view and process
-        </p>
-        <input
-          type='file'
-          accept='.pdf'
-          onChange={onFileUpload}
-          className='hidden'
-          id='pdf-upload'
-        />
-        <Button asChild>
-          <label htmlFor='pdf-upload' className='cursor-pointer'>
+    <div className='flex flex-col h-full overflow-hidden'>
+      <div className='flex-1 flex items-center justify-center'>
+        <div className='text-center p-8'>
+          <FileText className='mx-auto h-16 w-16 text-gray-300 mb-4 stroke-1' />
+          <p className='text-lg font-medium text-gray-900 mb-2'>
+            No PDF to display
+          </p>
+          <p className='text-sm text-gray-500 mb-6'>
+            Import an XML file using the menu bar or upload one directly
+          </p>
+
+          <Button
+            variant='outline'
+            className='cursor-pointer'
+            onClick={onFileUpload}
+          >
             <Upload className='w-4 h-4 mr-2' />
-            Upload PDF
-          </label>
-        </Button>
+            Upload XML File
+          </Button>
+        </div>
       </div>
       {pdfFile && (
         <div className='bg-green-50 border border-green-200 rounded-lg p-4'>
