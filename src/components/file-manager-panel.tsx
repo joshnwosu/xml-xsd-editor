@@ -50,37 +50,6 @@ export const FileManagerPanel: React.FC = () => {
     importFile('xsd');
   };
 
-  const handleFileUpload = (
-    event: React.ChangeEvent<HTMLInputElement>,
-    fileType: 'xml' | 'xsd' | 'pdf'
-  ) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (fileType === 'pdf') {
-      setPdfFile(file);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
-      // Escape HTML for display
-      const escapedContent = content
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-
-      if (fileType === 'xml') {
-        setXmlContent(escapedContent);
-      } else if (fileType === 'xsd') {
-        setXsdContent(escapedContent);
-      }
-    };
-    reader.readAsText(file);
-  };
-
   const renderTabContent = () => {
     switch (activeTab) {
       case 'pdf':
