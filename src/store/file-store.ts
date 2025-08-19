@@ -14,12 +14,15 @@ interface FileState {
   pdfFile: File | null;
   activeTab: string;
   schemaInfo: SchemaInfo;
+  hasUnsavedChanges: boolean;
   setXmlContent: (content: string) => void;
   setXsdContent: (content: string) => void;
   setPdfFile: (file: File | null) => void;
   setActiveTab: (tab: string) => void;
+  setHasUnsavedChanges: (hasChanges: boolean) => void;
   importFile: (fileType: 'xml' | 'xsd') => void;
   parseXsdSchema: () => SchemaInfo;
+  updateXmlFromWysiwyg: (wysiwygHtml: string) => void;
 }
 
 export const useFileStore = create<FileState>((set, get) => ({
@@ -28,6 +31,7 @@ export const useFileStore = create<FileState>((set, get) => ({
   pdfFile: null,
   activeTab: 'xml',
   schemaInfo: {},
+  hasUnsavedChanges: false,
 
   setXmlContent: (content) => set({ xmlContent: content }),
 
@@ -41,6 +45,22 @@ export const useFileStore = create<FileState>((set, get) => ({
 
   setPdfFile: (file) => set({ pdfFile: file }),
   setActiveTab: (tab) => set({ activeTab: tab }),
+  setHasUnsavedChanges: (hasChanges) => set({ hasUnsavedChanges: hasChanges }),
+
+  // New method to update XML from WYSIWYG editor
+  updateXmlFromWysiwyg: (wysiwygHtml: string) => {
+    try {
+      // Import XmlWysiwygConverter here or pass it as needed
+      const { XmlWysiwygConverter } = require('@/utils/xml-wysiwyg-converter');
+      const newXmlContent = XmlWysiwygConverter.wysiwygToXml(wysiwygHtml);
+      set({
+        xmlContent: newXmlContent,
+        hasUnsavedChanges: false,
+      });
+    } catch (error) {
+      console.error('Error converting WYSIWYG to XML:', error);
+    }
+  },
 
   importFile: (fileType) => {
     // Create a hidden file input element
@@ -58,7 +78,11 @@ export const useFileStore = create<FileState>((set, get) => ({
 
         if (fileType === 'xml') {
           // For XML, we want the raw content for processing, not escaped
-          set({ xmlContent: content, activeTab: 'xml' });
+          set({
+            xmlContent: content,
+            activeTab: 'xml',
+            hasUnsavedChanges: false,
+          });
         } else if (fileType === 'xsd') {
           // For XSD, store raw content and parse schema
           set({ xsdContent: content, activeTab: 'xsd' });
