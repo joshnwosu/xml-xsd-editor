@@ -475,6 +475,8 @@ export class XmlPdfConverter {
    * Render a collection as a table
    */
   private static renderTable(node: Element, level: number): string {
+    console.log('LEVEL: ', level);
+
     const childTagName = node.children[0]?.tagName;
     if (!childTagName) return '';
 
