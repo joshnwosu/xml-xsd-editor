@@ -85,14 +85,14 @@ export class XmlPdfConverter {
   private static getPdfStyles(): string {
     return `
       .pdf-document {
-        background: #525659;
+        background: #ffffff;
         padding: 20px;
         min-height: 100vh;
-        font-family: 'Times New Roman', Times, serif;
+        font-family: 'Ubuntu', 'Times New Roman', Times, serif;
       }
 
       .pdf-page {
-        width: 8.5in;
+        width: 7.5in;
         min-height: 11in;
         margin: 0 auto;
         background: white;
@@ -304,8 +304,7 @@ export class XmlPdfConverter {
       <div class="pdf-header">
         <h1>${this.documentMetadata.title}</h1>
         <div class="pdf-metadata">
-          <span>Document Date: ${this.documentMetadata.date}</span>
-          <span>Generated: ${new Date().toLocaleString()}</span>
+          
         </div>
       </div>
     `;
@@ -317,7 +316,6 @@ export class XmlPdfConverter {
   private static renderFooter(): string {
     return `
       <div class="pdf-footer">
-        <span>© ${new Date().getFullYear()} - Confidential Document</span>
         <span>Page ${this.documentMetadata.pageNumber}</span>
       </div>
     `;
@@ -499,7 +497,7 @@ export class XmlPdfConverter {
 
     // Table body
     html += '<tbody>';
-    Array.from(node.children).forEach((child, rowIndex) => {
+    Array.from(node.children).forEach((child) => {
       html += '<tr>';
       Array.from(child.children).forEach((grandchild) => {
         const text = grandchild.textContent?.trim() || '';
