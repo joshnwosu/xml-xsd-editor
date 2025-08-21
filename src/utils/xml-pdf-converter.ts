@@ -96,7 +96,7 @@ export class XmlPdfConverter {
         min-height: 11in;
         margin: 0 auto;
         background: white;
-        box-shadow: 0 0 20px rgba(0,0,0,0.3);
+      
         padding: 0;
         position: relative;
       }
@@ -124,7 +124,7 @@ export class XmlPdfConverter {
       }
 
       .pdf-content {
-        padding: 0 0.75in 1in 0.75in;
+        padding: 0 0.25in 1in 0.25in;
         line-height: 1.6;
         color: #000;
       }
