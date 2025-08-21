@@ -1157,6 +1157,7 @@ export class XmlWysiwygConverter {
    */
   private static renderTable(
     node: Element,
+    // @ts-ignore
     level: number,
     isEditable: boolean
   ): string {
@@ -1337,6 +1338,7 @@ export class XmlWysiwygConverter {
   private static buildXmlElement(
     container: Element,
     tagName: string,
+    // @ts-ignore
     level: number
   ): string {
     let xml = `<${tagName}`;
@@ -1365,6 +1367,8 @@ export class XmlWysiwygConverter {
           const sectionTitle = section
             .querySelector('.wysiwyg-subsection')
             ?.textContent?.trim();
+
+          // @ts-ignore
           const sectionTag = this.tagNameFromTitle(sectionTitle || '');
 
           const rows = section.querySelectorAll('tbody tr');
