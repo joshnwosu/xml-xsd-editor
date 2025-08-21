@@ -76,6 +76,12 @@ export class XmlWysiwygConverter {
     } else if (target.classList.contains('wysiwyg-save-row-button')) {
       event.preventDefault();
       this.handleSaveRowButton(target);
+    } else if (target.classList.contains('wysiwyg-cancel-field-button')) {
+      event.preventDefault();
+      this.handleCancelFieldButton(target);
+    } else if (target.classList.contains('wysiwyg-cancel-row-button')) {
+      event.preventDefault();
+      this.handleCancelRowButton(target);
     }
   }
 
@@ -86,25 +92,43 @@ export class XmlWysiwygConverter {
     const fieldGroup = button.closest('.wysiwyg-field-group');
     if (!fieldGroup) return;
 
+    const displaySpan = fieldGroup.querySelector(
+      '.wysiwyg-field-display'
+    ) as HTMLElement;
     const input = fieldGroup.querySelector(
       'input, textarea, select'
-    ) as HTMLElement;
-    const displaySpan = fieldGroup.querySelector('.wysiwyg-field-display');
+    ) as HTMLInputElement;
 
     if (input && displaySpan) {
+      // Store original value for cancel functionality
+      const currentValue = displaySpan.textContent || '';
+      input.setAttribute('data-original-value', currentValue);
+
+      // Update input value from display text
+      if (input.tagName === 'SELECT') {
+        input.value = currentValue === 'Not specified' ? '' : currentValue;
+      } else {
+        input.value = currentValue === 'N/A' ? '' : currentValue;
+      }
+
       // Hide display span and show input
-      displaySpan.classList.add('hidden');
+      displaySpan.style.display = 'none';
+      input.style.display = 'block';
       input.classList.remove('hidden');
 
       // Focus the input
-      (input as HTMLInputElement).focus();
+      input.focus();
 
       // Switch buttons
-      button.classList.add('hidden');
-      const saveButton = fieldGroup.querySelector('.wysiwyg-save-field-button');
-      if (saveButton) {
-        saveButton.classList.remove('hidden');
-      }
+      button.style.display = 'none';
+      const saveButton = fieldGroup.querySelector(
+        '.wysiwyg-save-field-button'
+      ) as HTMLElement;
+      const cancelButton = fieldGroup.querySelector(
+        '.wysiwyg-cancel-field-button'
+      ) as HTMLElement;
+      if (saveButton) saveButton.style.display = 'inline-flex';
+      if (cancelButton) cancelButton.style.display = 'inline-flex';
     }
   }
 
@@ -118,22 +142,68 @@ export class XmlWysiwygConverter {
     const input = fieldGroup.querySelector(
       'input, textarea, select'
     ) as HTMLInputElement;
-    const displaySpan = fieldGroup.querySelector('.wysiwyg-field-display');
+    const displaySpan = fieldGroup.querySelector(
+      '.wysiwyg-field-display'
+    ) as HTMLElement;
 
     if (input && displaySpan) {
       // Update display span with new value
-      displaySpan.textContent = input.value || 'N/A';
+      const newValue = input.value || 'N/A';
+      displaySpan.textContent = newValue;
+
+      // Update the stored data attribute
+      input.setAttribute('data-content', newValue);
 
       // Show display span and hide input
-      displaySpan.classList.remove('hidden');
-      input.classList.add('hidden');
+      displaySpan.style.display = 'inline-block';
+      input.style.display = 'none';
 
       // Switch buttons
-      button.classList.add('hidden');
-      const editButton = fieldGroup.querySelector('.wysiwyg-edit-field-button');
-      if (editButton) {
-        editButton.classList.remove('hidden');
-      }
+      button.style.display = 'none';
+      const cancelButton = fieldGroup.querySelector(
+        '.wysiwyg-cancel-field-button'
+      ) as HTMLElement;
+      if (cancelButton) cancelButton.style.display = 'none';
+      const editButton = fieldGroup.querySelector(
+        '.wysiwyg-edit-field-button'
+      ) as HTMLElement;
+      if (editButton) editButton.style.display = 'inline-flex';
+    }
+  }
+
+  /**
+   * Handle cancel field button click
+   */
+  private static handleCancelFieldButton(button: HTMLElement): void {
+    const fieldGroup = button.closest('.wysiwyg-field-group');
+    if (!fieldGroup) return;
+
+    const input = fieldGroup.querySelector(
+      'input, textarea, select'
+    ) as HTMLInputElement;
+    const displaySpan = fieldGroup.querySelector(
+      '.wysiwyg-field-display'
+    ) as HTMLElement;
+
+    if (input && displaySpan) {
+      // Restore original value to display span (not input)
+      const originalValue = input.getAttribute('data-original-value') || '';
+      displaySpan.textContent = originalValue || 'N/A';
+
+      // Show display span and hide input
+      displaySpan.style.display = 'inline-block';
+      input.style.display = 'none';
+
+      // Switch buttons
+      button.style.display = 'none';
+      const saveButton = fieldGroup.querySelector(
+        '.wysiwyg-save-field-button'
+      ) as HTMLElement;
+      if (saveButton) saveButton.style.display = 'none';
+      const editButton = fieldGroup.querySelector(
+        '.wysiwyg-edit-field-button'
+      ) as HTMLElement;
+      if (editButton) editButton.style.display = 'inline-flex';
     }
   }
 
@@ -144,22 +214,45 @@ export class XmlWysiwygConverter {
     const row = button.closest('tr');
     if (!row) return;
 
-    // Enable all inputs in this row
-    row.querySelectorAll('input, select, textarea').forEach((input) => {
-      (input as HTMLInputElement).disabled = false;
+    // Store original values for all cells
+    row.querySelectorAll('td[data-xml-tag]').forEach((cell) => {
+      const displaySpan = cell.querySelector(
+        '.wysiwyg-cell-display'
+      ) as HTMLElement;
+      const input = cell.querySelector(
+        'input, select, textarea'
+      ) as HTMLInputElement;
+
+      if (input && displaySpan) {
+        input.setAttribute(
+          'data-original-value',
+          input.value || displaySpan.textContent || ''
+        );
+        displaySpan.style.display = 'none';
+        input.style.display = 'block';
+        input.disabled = false;
+      }
     });
 
     // Add editing class to row
     row.classList.add('editing');
 
     // Switch buttons
-    button.classList.add('hidden');
+    button.style.display = 'none';
     const saveButton = button.parentElement?.querySelector(
       '.wysiwyg-save-row-button'
-    );
-    if (saveButton) {
-      saveButton.classList.remove('hidden');
-    }
+    ) as HTMLElement;
+    const cancelButton = button.parentElement?.querySelector(
+      '.wysiwyg-cancel-row-button'
+    ) as HTMLElement;
+    if (saveButton) saveButton.style.display = 'inline-flex';
+    if (cancelButton) cancelButton.style.display = 'inline-flex';
+
+    // Focus first input
+    const firstInput = row.querySelector(
+      'input, select, textarea'
+    ) as HTMLElement;
+    if (firstInput) firstInput.focus();
   }
 
   /**
@@ -169,22 +262,78 @@ export class XmlWysiwygConverter {
     const row = button.closest('tr');
     if (!row) return;
 
-    // Disable all inputs in this row
-    row.querySelectorAll('input, select, textarea').forEach((input) => {
-      (input as HTMLInputElement).disabled = true;
+    // Save all cell values
+    row.querySelectorAll('td[data-xml-tag]').forEach((cell) => {
+      const displaySpan = cell.querySelector(
+        '.wysiwyg-cell-display'
+      ) as HTMLElement;
+      const input = cell.querySelector(
+        'input, select, textarea'
+      ) as HTMLInputElement;
+
+      if (input && displaySpan) {
+        const newValue = input.value || 'N/A';
+        displaySpan.textContent = newValue;
+        input.setAttribute('data-content', newValue);
+        displaySpan.style.display = 'block';
+        input.style.display = 'none';
+        input.disabled = true;
+      }
     });
 
     // Remove editing class from row
     row.classList.remove('editing');
 
     // Switch buttons
-    button.classList.add('hidden');
+    button.style.display = 'none';
+    const cancelButton = button.parentElement?.querySelector(
+      '.wysiwyg-cancel-row-button'
+    ) as HTMLElement;
+    if (cancelButton) cancelButton.style.display = 'none';
     const editButton = button.parentElement?.querySelector(
       '.wysiwyg-edit-row-button'
-    );
-    if (editButton) {
-      editButton.classList.remove('hidden');
-    }
+    ) as HTMLElement;
+    if (editButton) editButton.style.display = 'inline-flex';
+  }
+
+  /**
+   * Handle cancel row button click
+   */
+  private static handleCancelRowButton(button: HTMLElement): void {
+    const row = button.closest('tr');
+    if (!row) return;
+
+    // Restore original values for all cells
+    row.querySelectorAll('td[data-xml-tag]').forEach((cell) => {
+      const displaySpan = cell.querySelector(
+        '.wysiwyg-cell-display'
+      ) as HTMLElement;
+      const input = cell.querySelector(
+        'input, select, textarea'
+      ) as HTMLInputElement;
+
+      if (input && displaySpan) {
+        const originalValue = input.getAttribute('data-original-value') || '';
+        input.value = originalValue;
+        displaySpan.style.display = 'block';
+        input.style.display = 'none';
+        input.disabled = true;
+      }
+    });
+
+    // Remove editing class from row
+    row.classList.remove('editing');
+
+    // Switch buttons
+    button.style.display = 'none';
+    const saveButton = button.parentElement?.querySelector(
+      '.wysiwyg-save-row-button'
+    ) as HTMLElement;
+    if (saveButton) saveButton.style.display = 'none';
+    const editButton = button.parentElement?.querySelector(
+      '.wysiwyg-edit-row-button'
+    ) as HTMLElement;
+    if (editButton) editButton.style.display = 'inline-flex';
   }
 
   /**
@@ -208,7 +357,8 @@ export class XmlWysiwygConverter {
 
     // Create new empty row
     const newRow = document.createElement('tr');
-    newRow.innerHTML = this.generateEmptyTableRow(columns);
+    newRow.classList.add('editing');
+    newRow.innerHTML = this.generateEmptyTableRow(columns, true);
 
     // Add to table
     tableBody.appendChild(newRow);
@@ -254,7 +404,10 @@ export class XmlWysiwygConverter {
   /**
    * Generate empty table row HTML
    */
-  private static generateEmptyTableRow(columns: string[]): string {
+  private static generateEmptyTableRow(
+    columns: string[],
+    isNew: boolean = false
+  ): string {
     let html = '';
 
     columns.forEach((tagName) => {
@@ -264,17 +417,24 @@ export class XmlWysiwygConverter {
 
       html += `<td data-xml-tag="${tagName}" data-content="${defaultValue}" data-content-type="text">`;
 
+      // Add display span (hidden for new rows)
+      html += `<span class="wysiwyg-cell-display" style="display: ${
+        isNew ? 'none' : 'block'
+      };">${defaultValue || 'N/A'}</span>`;
+
       if (this.hasEnumeration(tagName)) {
-        // Create dropdown for enum fields (disabled by default)
+        // Create dropdown for enum fields
         const enumValues = this.getEnumerationValues(tagName);
-        html += `<select class="wysiwyg-enum-select" data-xml-tag="${tagName}" data-content="" disabled>`;
+        html += `<select class="wysiwyg-enum-select" data-xml-tag="${tagName}" data-content="" style="display: ${
+          isNew ? 'block' : 'none'
+        };" ${!isNew ? 'disabled' : ''}>`;
         html += `<option value="">Select ${formattedTagName}</option>`;
         enumValues.forEach((value) => {
           html += `<option value="${value}">${value}</option>`;
         });
         html += '</select>';
       } else {
-        // Create input field (disabled by default)
+        // Create input field
         const inputType = this.getInputType(defaultValue || 'text');
         html += `<input type="${inputType}" 
                   class="wysiwyg-text-input" 
@@ -283,7 +443,8 @@ export class XmlWysiwygConverter {
                   data-content-type="text"
                   value="" 
                   placeholder="Enter ${formattedTagName.toLowerCase()}" 
-                  disabled />`;
+                  style="display: ${isNew ? 'block' : 'none'};"
+                  ${!isNew ? 'disabled' : ''} />`;
       }
 
       html += '</td>';
@@ -291,9 +452,15 @@ export class XmlWysiwygConverter {
 
     // Add action buttons column with icons
     html += '<td class="wysiwyg-table-actions">';
-    html += `<button class="wysiwyg-edit-row-button" type="button" title="Edit">✏️</button>`;
-    html += `<button class="wysiwyg-save-row-button hidden" type="button" title="Save">💾</button>`;
-    html += `<button class="wysiwyg-delete-button" type="button" title="Delete">✖</button>`;
+    if (isNew) {
+      html += `<button class="wysiwyg-save-row-button" type="button" title="Save">💾</button>`;
+      html += `<button class="wysiwyg-cancel-row-button" type="button" title="Cancel">❌</button>`;
+    } else {
+      html += `<button class="wysiwyg-edit-row-button" type="button" title="Edit">✏️</button>`;
+      html += `<button class="wysiwyg-save-row-button" style="display: none;" type="button" title="Save">💾</button>`;
+      html += `<button class="wysiwyg-cancel-row-button" style="display: none;" type="button" title="Cancel">❌</button>`;
+    }
+    html += `<button class="wysiwyg-delete-button" type="button" title="Delete">🗑️</button>`;
     html += '</td>';
 
     return html;
@@ -437,16 +604,17 @@ export class XmlWysiwygConverter {
 
       .wysiwyg-field-display {
         flex: 1;
-        padding: 4pt 6pt;
         font-size: 11pt;
         color: #000;
-        background: #f9f9f9;
-        border: 1px solid #e0e0e0;
-        border-radius: 2px;
+        display: inline-block;
+        padding: 4pt 0;
       }
 
-      .wysiwyg-field-display.hidden {
-        display: none;
+      .wysiwyg-cell-display {
+        padding: 2pt 4pt;
+        font-size: 10pt;
+        color: #000;
+        display: block;
       }
 
       .wysiwyg-text-input,
@@ -459,12 +627,13 @@ export class XmlWysiwygConverter {
         font-size: 11pt;
         font-family: inherit;
         background: #fafafa;
+        display: none;
       }
 
       .wysiwyg-text-input.hidden,
       .wysiwyg-textarea-input.hidden,
       .wysiwyg-enum-select.hidden {
-        display: none;
+        display: none !important;
       }
 
       .wysiwyg-text-input:disabled,
@@ -496,7 +665,11 @@ export class XmlWysiwygConverter {
       }
 
       .wysiwyg-edit-field-button,
-      .wysiwyg-save-field-button {
+      .wysiwyg-save-field-button,
+      .wysiwyg-cancel-field-button,
+      .wysiwyg-edit-row-button,
+      .wysiwyg-save-row-button,
+      .wysiwyg-cancel-row-button {
         padding: 3pt 8pt;
         font-size: 12pt;
         border: none;
@@ -507,31 +680,23 @@ export class XmlWysiwygConverter {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-      }
-
-      .wysiwyg-edit-field-button {
-        background: #2196F3;
-        color: white;
         background: transparent;
+        transition: background-color 0.2s;
       }
 
-      .wysiwyg-edit-field-button:hover {
-        background: #1976D2;
+      .wysiwyg-edit-field-button:hover,
+      .wysiwyg-edit-row-button:hover {
+        background: #e3f2fd;
       }
 
-      .wysiwyg-save-field-button {
-        background: #4CAF50;
-        color: white;
-         background: transparent;
+      .wysiwyg-save-field-button:hover,
+      .wysiwyg-save-row-button:hover {
+        background: #e8f5e9;
       }
 
-      .wysiwyg-save-field-button:hover {
-        background: #45a049;
-      }
-
-      .wysiwyg-edit-field-button.hidden,
-      .wysiwyg-save-field-button.hidden {
-        display: none;
+      .wysiwyg-cancel-field-button:hover,
+      .wysiwyg-cancel-row-button:hover {
+        background: #ffebee;
       }
 
       .wysiwyg-table-container {
@@ -594,6 +759,13 @@ export class XmlWysiwygConverter {
         border: 1px solid #999;
         font-size: 10pt;
         background: white;
+        display: none;
+      }
+
+      .wysiwyg-table tr.editing input,
+      .wysiwyg-table tr.editing select,
+      .wysiwyg-table tr.editing textarea {
+        display: block !important;
       }
 
       .wysiwyg-table input:disabled,
@@ -625,9 +797,8 @@ export class XmlWysiwygConverter {
         background: #45a049;
       }
 
-      .wysiwyg-delete-button,
-      .wysiwyg-edit-row-button,
-      .wysiwyg-save-row-button {
+      .wysiwyg-delete-button {
+        background: transparent;
         border: none;
         padding: 4pt 8pt;
         font-size: 12pt;
@@ -638,42 +809,11 @@ export class XmlWysiwygConverter {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-      }
-
-      .wysiwyg-delete-button {
-        background: #f44336;
-        color: black;
-         background: transparent;
+        transition: background-color 0.2s;
       }
 
       .wysiwyg-delete-button:hover {
-        background: #da190b;
-        color: white;
-      }
-
-      .wysiwyg-edit-row-button {
-        background: #2196F3;
-        color: white;
-         background: transparent;
-      }
-
-      .wysiwyg-edit-row-button:hover {
-        background: #1976D2;
-      }
-
-      .wysiwyg-save-row-button {
-        background: #4CAF50;
-        color: white;
-         background: transparent;
-      }
-
-      .wysiwyg-save-row-button:hover {
-        background: #45a049;
-      }
-
-      .wysiwyg-edit-row-button.hidden,
-      .wysiwyg-save-row-button.hidden {
-        display: none;
+        background: #ffebee;
       }
 
       .wysiwyg-metadata-block {
@@ -740,8 +880,14 @@ export class XmlWysiwygConverter {
         }
 
         .wysiwyg-add-button,
-        .wysiwyg-delete-button {
-          display: none;
+        .wysiwyg-delete-button,
+        .wysiwyg-edit-field-button,
+        .wysiwyg-save-field-button,
+        .wysiwyg-cancel-field-button,
+        .wysiwyg-edit-row-button,
+        .wysiwyg-save-row-button,
+        .wysiwyg-cancel-row-button {
+          display: none !important;
         }
       }
     `;
@@ -1025,38 +1171,34 @@ export class XmlWysiwygConverter {
     let html = `<div class="wysiwyg-field-group">`;
     html += `<span class="wysiwyg-field-label">${formattedLabel}:</span>`;
 
-    if (this.hasEnumeration(tagName)) {
-      const enumValues = this.getEnumerationValues(tagName);
-      if (isEditable) {
-        // Add display span (visible by default)
-        html += `<span class="wysiwyg-field-display">${
-          text || 'Not specified'
-        }</span>`;
+    if (isEditable) {
+      // Always show display span by default for editable fields
+      let displayValue = text || 'N/A';
 
+      // Format display value based on content type
+      if (contentType === 'email') {
+        displayValue = text;
+      } else if (contentType === 'url') {
+        displayValue = text;
+      } else if (contentType === 'date' && text) {
+        displayValue = this.formatDate(text);
+      } else if (contentType === 'currency') {
+        displayValue = text;
+      }
+
+      html += `<span class="wysiwyg-field-display" style="display: inline-block;">${displayValue}</span>`;
+
+      if (this.hasEnumeration(tagName)) {
+        const enumValues = this.getEnumerationValues(tagName);
         // Add select (hidden by default)
-        html += `<select class="wysiwyg-enum-select hidden" data-xml-tag="${tagName}">`;
+        html += `<select class="wysiwyg-enum-select" data-xml-tag="${tagName}" data-content="${text}" style="display: none;">`;
         html += `<option value="">Select ${formattedLabel}</option>`;
         enumValues.forEach((value) => {
           const selected = value === text ? 'selected' : '';
           html += `<option value="${value}" ${selected}>${value}</option>`;
         });
         html += '</select>';
-
-        // Add edit/save buttons with icons
-        html += `<div class="wysiwyg-field-buttons">`;
-        html += `<button class="wysiwyg-edit-field-button" type="button" title="Edit">✏️</button>`;
-        html += `<button class="wysiwyg-save-field-button hidden" type="button" title="Save">💾</button>`;
-        html += `</div>`;
       } else {
-        html += `<span class="wysiwyg-field-value">${
-          text || 'Not specified'
-        }</span>`;
-      }
-    } else {
-      if (isEditable) {
-        // Add display span (visible by default)
-        html += `<span class="wysiwyg-field-display">${text || 'N/A'}</span>`;
-
         let validationAttrs = '';
         if (additionalInfo.minLength)
           validationAttrs += ` minlength="${additionalInfo.minLength}"`;
@@ -1067,54 +1209,59 @@ export class XmlWysiwygConverter {
 
         // Add input (hidden by default)
         if (text.length > 100 || contentType === 'paragraph') {
-          html += `<textarea class="wysiwyg-textarea-input hidden" 
+          html += `<textarea class="wysiwyg-textarea-input" 
                     data-xml-tag="${tagName}" 
+                    data-content="${text}"
                     placeholder="Enter ${formattedLabel.toLowerCase()}"
-                    rows="4"${validationAttrs}>${text}</textarea>`;
+                    rows="4"
+                    style="display: none;"${validationAttrs}>${text}</textarea>`;
         } else {
           const inputType = this.getInputType(text);
           html += `<input type="${inputType}" 
-                    class="wysiwyg-text-input hidden" 
+                    class="wysiwyg-text-input" 
                     data-xml-tag="${tagName}" 
+                    data-content="${text}"
                     value="${text}" 
-                    placeholder="Enter ${formattedLabel.toLowerCase()}"${validationAttrs} />`;
+                    placeholder="Enter ${formattedLabel.toLowerCase()}"
+                    style="display: none;"${validationAttrs} />`;
         }
+      }
 
-        // Add edit/save buttons with icons
-        html += `<div class="wysiwyg-field-buttons">`;
-        html += `<button class="wysiwyg-edit-field-button" type="button" title="Edit">✏️</button>`;
-        html += `<button class="wysiwyg-save-field-button hidden" type="button" title="Save">💾</button>`;
-        html += `</div>`;
-      } else {
-        // Format based on content type
-        let valueHtml = '';
-        switch (contentType) {
-          case 'email':
-            valueHtml = `<a href="mailto:${text}" class="wysiwyg-link">${text}</a>`;
-            break;
-          case 'url':
-            valueHtml = `<a href="${text}" target="_blank" class="wysiwyg-link">${text}</a>`;
-            break;
-          case 'date':
-            valueHtml = `<span class="wysiwyg-date">${this.formatDate(
-              text
-            )}</span>`;
-            break;
-          case 'currency':
-            valueHtml = `<span class="wysiwyg-currency">${text}</span>`;
-            break;
-          case 'paragraph':
-            html += `</div><div class="wysiwyg-text-block">${text}`;
-            valueHtml = '';
-            break;
-          default:
-            valueHtml = `<span class="wysiwyg-field-value">${
-              text || 'N/A'
-            }</span>`;
-        }
-        if (valueHtml) {
-          html += valueHtml;
-        }
+      // Add edit/save/cancel buttons with icons
+      html += `<div class="wysiwyg-field-buttons">`;
+      html += `<button class="wysiwyg-edit-field-button" type="button" title="Edit">✏️</button>`;
+      html += `<button class="wysiwyg-save-field-button" style="display: none;" type="button" title="Save">💾</button>`;
+      html += `<button class="wysiwyg-cancel-field-button" style="display: none;" type="button" title="Cancel">❌</button>`;
+      html += `</div>`;
+    } else {
+      // Non-editable mode - format based on content type
+      let valueHtml = '';
+      switch (contentType) {
+        case 'email':
+          valueHtml = `<a href="mailto:${text}" class="wysiwyg-link">${text}</a>`;
+          break;
+        case 'url':
+          valueHtml = `<a href="${text}" target="_blank" class="wysiwyg-link">${text}</a>`;
+          break;
+        case 'date':
+          valueHtml = `<span class="wysiwyg-date">${this.formatDate(
+            text
+          )}</span>`;
+          break;
+        case 'currency':
+          valueHtml = `<span class="wysiwyg-currency">${text}</span>`;
+          break;
+        case 'paragraph':
+          html += `</div><div class="wysiwyg-text-block">${text}`;
+          valueHtml = '';
+          break;
+        default:
+          valueHtml = `<span class="wysiwyg-field-value">${
+            text || 'N/A'
+          }</span>`;
+      }
+      if (valueHtml) {
+        html += valueHtml;
       }
     }
 
@@ -1201,14 +1348,16 @@ export class XmlWysiwygConverter {
       Array.from(child.children).forEach((grandchild) => {
         const text = grandchild.textContent?.trim() || '';
         const tagName = grandchild.tagName;
-        const contentType = this.getContentType(text);
 
         html += `<td data-xml-tag="${tagName}">`;
+
+        // Add display span (visible by default)
+        html += `<span class="wysiwyg-cell-display">${text || 'N/A'}</span>`;
 
         if (isEditable) {
           if (this.hasEnumeration(tagName)) {
             const enumValues = this.getEnumerationValues(tagName);
-            html += `<select class="wysiwyg-enum-select" data-xml-tag="${tagName}" disabled>`;
+            html += `<select class="wysiwyg-enum-select" data-xml-tag="${tagName}" style="display: none;" disabled>`;
             enumValues.forEach((value) => {
               const selected = value === text ? 'selected' : '';
               html += `<option value="${value}" ${selected}>${value}</option>`;
@@ -1221,24 +1370,8 @@ export class XmlWysiwygConverter {
                       data-xml-tag="${tagName}" 
                       value="${text}" 
                       placeholder="${this.formatTagName(tagName)}" 
+                      style="display: none;"
                       disabled />`;
-          }
-        } else {
-          switch (contentType) {
-            case 'email':
-              html += `<a href="mailto:${text}" class="wysiwyg-link">${text}</a>`;
-              break;
-            case 'url':
-              html += `<a href="${text}" target="_blank" class="wysiwyg-link">${text}</a>`;
-              break;
-            case 'date':
-              html += this.formatDate(text);
-              break;
-            case 'currency':
-              html += `<span class="wysiwyg-currency">${text}</span>`;
-              break;
-            default:
-              html += text || 'N/A';
           }
         }
 
@@ -1248,8 +1381,9 @@ export class XmlWysiwygConverter {
       if (isEditable) {
         html += '<td class="wysiwyg-table-actions">';
         html += `<button class="wysiwyg-edit-row-button" type="button" title="Edit">✏️</button>`;
-        html += `<button class="wysiwyg-save-row-button hidden" type="button" title="Save">💾</button>`;
-        html += `<button class="wysiwyg-delete-button" type="button" title="Delete">✖</button>`;
+        html += `<button class="wysiwyg-save-row-button" style="display: none;" type="button" title="Save">💾</button>`;
+        html += `<button class="wysiwyg-cancel-row-button" style="display: none;" type="button" title="Cancel">❌</button>`;
+        html += `<button class="wysiwyg-delete-button" type="button" title="Delete">🗑️</button>`;
         html += '</td>';
       }
 
@@ -1381,10 +1515,15 @@ export class XmlWysiwygConverter {
 
               row.querySelectorAll('td[data-xml-tag]').forEach((cell) => {
                 const fieldTag = cell.getAttribute('data-xml-tag');
+                const displaySpan = cell.querySelector('.wysiwyg-cell-display');
                 const input = cell.querySelector(
                   'input, select, textarea'
                 ) as HTMLInputElement;
-                const value = input?.value || cell.textContent?.trim() || '';
+                const value =
+                  displaySpan?.textContent ||
+                  input?.value ||
+                  cell.textContent?.trim() ||
+                  '';
                 if (fieldTag) {
                   xml += `<${fieldTag}>${this.escapeXmlContent(
                     value
@@ -1410,12 +1549,13 @@ export class XmlWysiwygConverter {
 
           // Process fields in this section
           section.querySelectorAll('.wysiwyg-field-group').forEach((field) => {
+            const displaySpan = field.querySelector('.wysiwyg-field-display');
             const input = field.querySelector(
               'input, select, textarea'
             ) as HTMLInputElement;
             if (input) {
               const fieldTag = input.getAttribute('data-xml-tag');
-              const value = input.value || '';
+              const value = displaySpan?.textContent || input.value || '';
               if (fieldTag) {
                 xml += `<${fieldTag}>${this.escapeXmlContent(
                   value
@@ -1428,12 +1568,13 @@ export class XmlWysiwygConverter {
         }
         // Handle standalone fields
         else if (section.classList.contains('wysiwyg-field-group')) {
+          const displaySpan = section.querySelector('.wysiwyg-field-display');
           const input = section.querySelector(
             'input, select, textarea'
           ) as HTMLInputElement;
           if (input) {
             const fieldTag = input.getAttribute('data-xml-tag');
-            const value = input.value || '';
+            const value = displaySpan?.textContent || input.value || '';
             if (fieldTag) {
               xml += `<${fieldTag}>${this.escapeXmlContent(
                 value
