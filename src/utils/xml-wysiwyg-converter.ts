@@ -1546,10 +1546,10 @@ export class XmlWysiwygConverter {
   /**
    * Get enumeration values for a field
    */
-  private static getEnumerationValues(tagName: string): string[] {
-    const schemaInfo = this.schemaInfo[tagName];
-    return schemaInfo?.enumValues || [];
-  }
+  // private static getEnumerationValues(tagName: string): string[] {
+  //   const schemaInfo = this.schemaInfo[tagName];
+  //   return schemaInfo?.enumValues || [];
+  // }
 
   /**
    * Parse XSD content directly (if needed for additional schema information)
