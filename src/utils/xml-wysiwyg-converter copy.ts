@@ -9,7 +9,6 @@ export interface SchemaInfo {
   [tagName: string]: {
     type?: 'enum' | 'string' | 'number' | 'date';
     enumValues?: string[];
-    enumDocumentation?: { [value: string]: string }; // Added for enum documentation
     defaultValue?: string;
   };
 }
@@ -32,194 +31,9 @@ export class XmlWysiwygConverter {
     this.schemaInfo = schema;
     if (xsdContent) {
       this.xsdContent = xsdContent;
-      // Parse and store enum documentation from XSD
-      this.enrichSchemaWithDocumentation();
     }
     // Initialize event handlers after DOM is ready
     setTimeout(() => this.initializeEventHandlers(), 100);
-  }
-
-  /**
-   * Enrich schema info with documentation extracted from XSD
-   */
-  private static enrichSchemaWithDocumentation(): void {
-    Object.keys(this.schemaInfo).forEach((tagName) => {
-      if (this.schemaInfo[tagName].type === 'enum') {
-        const enumData = this.parseEnumerationWithDocumentation(tagName);
-        if (enumData.values.length > 0) {
-          this.schemaInfo[tagName].enumValues = enumData.values;
-          this.schemaInfo[tagName].enumDocumentation = enumData.documentation;
-        }
-      }
-    });
-  }
-
-  /**
-   * Parse enumeration values with their documentation from XSD (supports both annotations and comments)
-   */
-  private static parseEnumerationWithDocumentation(tagName: string): {
-    values: string[];
-    documentation: { [value: string]: string };
-  } {
-    const result = {
-      values: [] as string[],
-      documentation: {} as { [value: string]: string },
-    };
-
-    if (!this.xsdContent) return result;
-
-    try {
-      // First, try to parse from proper XML structure
-      const parser = new DOMParser();
-      const xsdDoc = parser.parseFromString(this.xsdContent, 'application/xml');
-
-      // Find the element or type definition for this tag
-      const elements = xsdDoc.querySelectorAll('xs\\:element, element');
-
-      for (const element of elements) {
-        const elementName = element.getAttribute('name');
-        if (elementName === tagName) {
-          // Look for enumerations in restrictions
-          const enumerations = element.querySelectorAll(
-            'xs\\:enumeration, enumeration'
-          );
-
-          enumerations.forEach((enumNode) => {
-            const value = enumNode.getAttribute('value');
-            if (value) {
-              result.values.push(value);
-
-              // Look for proper annotation
-              const annotation = enumNode.querySelector(
-                'xs\\:annotation, annotation'
-              );
-              if (annotation) {
-                const documentation = annotation.querySelector(
-                  'xs\\:documentation, documentation'
-                );
-                if (documentation && documentation.textContent) {
-                  result.documentation[value] =
-                    documentation.textContent.trim();
-                }
-              }
-            }
-          });
-        }
-      }
-
-      // Also check simpleType definitions
-      const simpleTypes = xsdDoc.querySelectorAll(
-        'xs\\:simpleType, simpleType'
-      );
-      for (const simpleType of simpleTypes) {
-        const typeName = simpleType.getAttribute('name');
-        if (typeName === tagName || typeName === `${tagName}Type`) {
-          const enumerations = simpleType.querySelectorAll(
-            'xs\\:enumeration, enumeration'
-          );
-
-          enumerations.forEach((enumNode) => {
-            const value = enumNode.getAttribute('value');
-            if (value && !result.values.includes(value)) {
-              result.values.push(value);
-
-              // Check for annotation
-              const annotation = enumNode.querySelector(
-                'xs\\:annotation, annotation'
-              );
-              if (annotation) {
-                const documentation = annotation.querySelector(
-                  'xs\\:documentation, documentation'
-                );
-                if (documentation && documentation.textContent) {
-                  result.documentation[value] =
-                    documentation.textContent.trim();
-                }
-              }
-            }
-          });
-        }
-      }
-
-      // If we found values but no documentation, try to extract from comments in raw XSD
-      if (
-        result.values.length > 0 &&
-        Object.keys(result.documentation).length === 0
-      ) {
-        result.values.forEach((value) => {
-          const comment = this.extractCommentForEnumValue(
-            value,
-            this.xsdContent
-          );
-          if (comment) {
-            result.documentation[value] = comment;
-          }
-        });
-      }
-    } catch (error) {
-      console.warn('Error parsing enumeration documentation from XML:', error);
-    }
-
-    // If no values found via DOM parsing, try pure regex extraction
-    if (result.values.length === 0) {
-      const patterns = [
-        /<xs:enumeration\s+value="([^"]+)"[^>]*>(?:\s*<!--\s*(.*?)\s*-->)?/g,
-        /<enumeration\s+value="([^"]+)"[^>]*>(?:\s*<!--\s*(.*?)\s*-->)?/g,
-      ];
-
-      patterns.forEach((pattern) => {
-        let match;
-        while ((match = pattern.exec(this.xsdContent)) !== null) {
-          const [, value, comment] = match;
-          if (value && !result.values.includes(value)) {
-            result.values.push(value);
-            if (comment) {
-              result.documentation[value] = comment.trim();
-            }
-          }
-        }
-      });
-    }
-
-    return result;
-  }
-
-  /**
-   * Extract comment for a specific enumeration value from raw XSD content
-   */
-  private static extractCommentForEnumValue(
-    value: string,
-    xsdContent: string
-  ): string | null {
-    // Escape special regex characters in the value
-    const escapedValue = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    // Pattern 1: Comment inside the enumeration element
-    const pattern1 = new RegExp(
-      `<(?:xs:)?enumeration\\s+value="${escapedValue}"[^>]*>\\s*<!--\\s*(.*?)\\s*-->\\s*</(?:xs:)?enumeration>`,
-      's'
-    );
-
-    // Pattern 2: Comment right after opening tag
-    const pattern2 = new RegExp(
-      `<(?:xs:)?enumeration\\s+value="${escapedValue}"[^>]*>\\s*<!--\\s*(.*?)\\s*-->`,
-      's'
-    );
-
-    // Pattern 3: Comment before the enumeration tag
-    const pattern3 = new RegExp(
-      `<!--\\s*(.*?)\\s*-->\\s*<(?:xs:)?enumeration\\s+value="${escapedValue}"`,
-      's'
-    );
-
-    for (const pattern of [pattern1, pattern2, pattern3]) {
-      const match = pattern.exec(xsdContent);
-      if (match && match[1]) {
-        return match[1].trim();
-      }
-    }
-
-    return null;
   }
 
   /**
@@ -281,7 +95,7 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Open searchable dropdown modal with documentation support
+   * Open searchable dropdown modal
    */
   private static openSearchableDropdown(trigger: HTMLElement): void {
     const fieldGroup = trigger.closest('.wysiwyg-field-group');
@@ -291,12 +105,7 @@ export class XmlWysiwygConverter {
 
     const tagName = trigger.getAttribute('data-xml-tag') || '';
     const currentValue = trigger.getAttribute('data-current-value') || '';
-
-    // Get enumeration values and documentation from schema
-    const schemaInfo = this.schemaInfo[tagName];
-    const enumValues = schemaInfo?.enumValues || [];
-    const enumDocs = schemaInfo?.enumDocumentation || {};
-
+    const enumValues = this.getEnumerationValues(tagName);
     const formattedTagName = this.formatTagName(tagName);
 
     // Create modal overlay
@@ -319,33 +128,21 @@ export class XmlWysiwygConverter {
         </div>
         <div class="wysiwyg-searchable-options">
           <div class="wysiwyg-searchable-option" data-value="">
-            <div class="wysiwyg-option-content">
-              <span class="wysiwyg-option-value">Not specified</span>
-            </div>
+            <span>Not specified</span>
           </div>
           ${enumValues
-            .map((value) => {
-              const hasDoc = enumDocs[value];
-              return `
-                  <div class="wysiwyg-searchable-option ${
-                    value === currentValue ? 'selected' : ''
-                  }" data-value="${value}">
-                    <div class="wysiwyg-option-content">
-                      <span class="wysiwyg-option-value">${value}</span>
-                      ${
-                        hasDoc
-                          ? `<span class="wysiwyg-option-doc">${enumDocs[value]}</span>`
-                          : ''
-                      }
-                    </div>
-                    ${
-                      value === currentValue
-                        ? '<span class="checkmark">✓</span>'
-                        : ''
-                    }
-                  </div>
-                `;
-            })
+            .map(
+              (value) => `
+            <div class="wysiwyg-searchable-option ${
+              value === currentValue ? 'selected' : ''
+            }" data-value="${value}">
+              <span>${value}</span>
+              ${
+                value === currentValue ? '<span class="checkmark">✓</span>' : ''
+              }
+            </div>
+          `
+            )
             .join('')}
         </div>
       </div>
@@ -353,7 +150,7 @@ export class XmlWysiwygConverter {
 
     document.body.appendChild(modal);
 
-    // Set up search functionality - search both value and documentation
+    // Set up search functionality
     const searchInput = modal.querySelector(
       '.wysiwyg-searchable-input'
     ) as HTMLInputElement;
@@ -367,17 +164,8 @@ export class XmlWysiwygConverter {
         );
 
         options.forEach((option) => {
-          const valueText =
-            option
-              .querySelector('.wysiwyg-option-value')
-              ?.textContent?.toLowerCase() || '';
-          const docText =
-            option
-              .querySelector('.wysiwyg-option-doc')
-              ?.textContent?.toLowerCase() || '';
-          const fullText = valueText + ' ' + docText;
-
-          if (fullText.includes(searchTerm)) {
+          const text = option.textContent?.toLowerCase() || '';
+          if (text.includes(searchTerm)) {
             (option as HTMLElement).style.display = 'flex';
           } else {
             (option as HTMLElement).style.display = 'none';
@@ -1209,53 +997,22 @@ export class XmlWysiwygConverter {
         transition: background 0.2s;
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
+        align-items: center;
         margin: 2pt 0;
-        min-height: 40px;
-      }
-
-      .wysiwyg-option-content {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-
-      .wysiwyg-option-value {
-        font-weight: 500;
-        color: #333;
-        font-size: 11pt;
-      }
-
-      .wysiwyg-option-doc {
-        font-size: 9pt;
-        color: #666;
-        line-height: 1.3;
-        margin-top: 2px;
       }
 
       .wysiwyg-searchable-option:hover {
         background: #f0f7ff;
       }
 
-      .wysiwyg-searchable-option:hover .wysiwyg-option-doc {
-        color: #555;
-      }
-
       .wysiwyg-searchable-option.selected {
         background: #e3f2fd;
-      }
-
-      .wysiwyg-searchable-option.selected .wysiwyg-option-value {
-        color: #0066cc;
-        font-weight: 600;
+        font-weight: 500;
       }
 
       .wysiwyg-searchable-option .checkmark {
         color: #0066cc;
         font-weight: bold;
-        margin-left: 8px;
-        flex-shrink: 0;
       }
 
       .wysiwyg-text-input.hidden,
@@ -1546,10 +1303,10 @@ export class XmlWysiwygConverter {
   /**
    * Get enumeration values for a field
    */
-  // private static getEnumerationValues(tagName: string): string[] {
-  //   const schemaInfo = this.schemaInfo[tagName];
-  //   return schemaInfo?.enumValues || [];
-  // }
+  private static getEnumerationValues(tagName: string): string[] {
+    const schemaInfo = this.schemaInfo[tagName];
+    return schemaInfo?.enumValues || [];
+  }
 
   /**
    * Parse XSD content directly (if needed for additional schema information)
@@ -1672,12 +1429,6 @@ export class XmlWysiwygConverter {
       }</div>`;
     }
   }
-
-  // ... [Continue with all the remaining methods from your original code]
-  // renderHeader, renderFooter, processNode, renderField, renderAttributes,
-  // renderTable, getInputType, getContentType, wysiwygToXml, buildXmlFromDocument,
-  // buildXmlElement, tagNameFromTitle, and all utility methods (isEmail, isUrl, etc.)
-  // These remain exactly the same as in your original code
 
   /**
    * Render WYSIWYG header with PDF styling
@@ -1802,9 +1553,6 @@ export class XmlWysiwygConverter {
     return result;
   }
 
-  // ... [Include all remaining methods from your original code here]
-  // All the utility methods, render methods, conversion methods, etc.
-  // They remain exactly the same
   /**
    * Render a field with label and value (PDF style)
    */
