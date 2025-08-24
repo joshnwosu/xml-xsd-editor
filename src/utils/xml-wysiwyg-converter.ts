@@ -311,6 +311,12 @@ export class XmlWysiwygConverter {
    * Open searchable dropdown modal with documentation support
    */
   private static openSearchableDropdown(trigger: HTMLElement): void {
+    // Prevent multiple modals
+    const existingModal = document.querySelector('.wysiwyg-searchable-modal');
+    if (existingModal) {
+      existingModal.remove();
+    }
+
     const fieldGroup = trigger.closest('.wysiwyg-field-group');
     const cell = trigger.closest('td');
     const container = fieldGroup || cell;
@@ -333,50 +339,55 @@ export class XmlWysiwygConverter {
     modal.setAttribute('data-trigger-id', trigger.id || '');
 
     modal.innerHTML = `
-      <div class="wysiwyg-searchable-content">
-        <div class="wysiwyg-searchable-header">
-          <h3>Select ${formattedTagName}</h3>
-          <button class="wysiwyg-searchable-close" type="button">✕</button>
-        </div>
-        <div class="wysiwyg-searchable-search">
-          <input type="text" 
-                 class="wysiwyg-searchable-input" 
-                 placeholder="Search ${formattedTagName.toLowerCase()}..." 
-                 autofocus />
-        </div>
-        <div class="wysiwyg-searchable-options">
-          <div class="wysiwyg-searchable-option" data-value="">
-            <div class="wysiwyg-option-content">
-              <span class="wysiwyg-option-value">Not specified</span>
-            </div>
+    <div class="wysiwyg-searchable-content">
+      <div class="wysiwyg-searchable-header">
+        <h3>Select ${formattedTagName}</h3>
+        <button class="wysiwyg-searchable-close" type="button">✕</button>
+      </div>
+      <div class="wysiwyg-searchable-search">
+        <input type="text" 
+               class="wysiwyg-searchable-input" 
+               placeholder="Search ${formattedTagName.toLowerCase()}..." 
+               autofocus />
+      </div>
+      <div class="wysiwyg-searchable-options">
+        <div class="wysiwyg-searchable-option" data-value="">
+          <div class="wysiwyg-option-content">
+            <span class="wysiwyg-option-value">Not specified</span>
           </div>
-          ${enumValues
-            .map((value) => {
-              const hasDoc = enumDocs[value];
-              return `
-                  <div class="wysiwyg-searchable-option ${
-                    value === currentValue ? 'selected' : ''
-                  }" data-value="${value}">
-                    <div class="wysiwyg-option-content">
-                      <span class="wysiwyg-option-value">${value}</span>
-                      ${
-                        hasDoc
-                          ? `<span class="wysiwyg-option-doc">${enumDocs[value]}</span>`
-                          : ''
-                      }
-                    </div>
+          ${currentValue === '' ? '<span class="checkmark">✓</span>' : ''}
+        </div>
+        ${enumValues
+          .map((value) => {
+            const hasDoc = enumDocs[value];
+            return `
+                <div class="wysiwyg-searchable-option ${
+                  value === currentValue ? 'selected' : ''
+                }" data-value="${this.escapeHtmlAttribute(value)}">
+                  <div class="wysiwyg-option-content">
+                    <span class="wysiwyg-option-value">${this.escapeHtml(
+                      value
+                    )}</span>
                     ${
-                      value === currentValue
-                        ? '<span class="checkmark">✓</span>'
+                      hasDoc
+                        ? `<span class="wysiwyg-option-doc">${this.escapeHtml(
+                            enumDocs[value]
+                          )}</span>`
                         : ''
                     }
                   </div>
-                `;
-            })
-            .join('')}
-        </div>
+                  ${
+                    value === currentValue
+                      ? '<span class="checkmark">✓</span>'
+                      : ''
+                  }
+                </div>
+              `;
+          })
+          .join('')}
       </div>
-    `;
+    </div>
+  `;
 
     document.body.appendChild(modal);
 
@@ -412,8 +423,8 @@ export class XmlWysiwygConverter {
         });
       });
 
-      // Focus search input
-      searchInput.focus();
+      // Focus search input after a small delay to ensure modal is rendered
+      setTimeout(() => searchInput.focus(), 50);
     }
 
     // Close on background click
@@ -460,12 +471,13 @@ export class XmlWysiwygConverter {
       trigger.textContent = displayText;
       trigger.setAttribute('data-current-value', value);
 
-      // Also update any associated hidden select if it exists
+      // Find the parent container (field group or table cell)
       const fieldGroup = trigger.closest('.wysiwyg-field-group');
       const cell = trigger.closest('td');
       const container = fieldGroup || cell;
 
       if (container) {
+        // Update any associated hidden select if it exists
         const hiddenSelect = container.querySelector(
           `select[data-xml-tag="${tagName}"]`
         ) as HTMLSelectElement;
@@ -473,12 +485,31 @@ export class XmlWysiwygConverter {
           hiddenSelect.value = value;
           hiddenSelect.setAttribute('data-content', value);
         }
+
+        // IMPORTANT: Also update the display span with the new value
+        // This ensures the value persists when the field is saved
+        const displaySpan = container.querySelector(
+          '.wysiwyg-field-display, .wysiwyg-cell-display'
+        ) as HTMLElement;
+        if (displaySpan) {
+          // Store the new value in a data attribute for later retrieval
+          displaySpan.setAttribute(
+            'data-pending-value',
+            value || 'Not specified'
+          );
+        }
       }
     }
 
+    // Close the modal
     this.closeSearchableDropdown();
-  }
 
+    // Prevent event bubbling that might interfere
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  }
   /**
    * Close searchable dropdown
    */
@@ -566,10 +597,20 @@ export class XmlWysiwygConverter {
       let newValue = '';
 
       if (searchableTrigger) {
-        // For searchable dropdown
-        newValue =
-          searchableTrigger.getAttribute('data-current-value') ||
-          'Not specified';
+        // For searchable dropdown - get the current value from the trigger
+        newValue = searchableTrigger.getAttribute('data-current-value') || '';
+
+        // If no value, check for pending value
+        if (!newValue) {
+          newValue =
+            displaySpan.getAttribute('data-pending-value') || 'Not specified';
+        }
+
+        // Clear pending value
+        displaySpan.removeAttribute('data-pending-value');
+
+        // Format for display
+        newValue = newValue || 'Not specified';
         searchableTrigger.style.display = 'none';
       } else if (input) {
         // For regular inputs
@@ -725,7 +766,17 @@ export class XmlWysiwygConverter {
         let newValue = '';
 
         if (searchableTrigger) {
+          // Get the current value from the trigger
           newValue = searchableTrigger.getAttribute('data-current-value') || '';
+
+          // If no value, check for pending value
+          if (!newValue) {
+            newValue = displaySpan.getAttribute('data-pending-value') || '';
+          }
+
+          // Clear pending value
+          displaySpan.removeAttribute('data-pending-value');
+
           newValue = newValue || 'N/A';
           searchableTrigger.style.display = 'none';
         } else if (input) {
@@ -2530,13 +2581,21 @@ export class XmlWysiwygConverter {
       .replace(/>/g, '&gt;');
   }
 
-  // private static escapeXmlAttribute(str: string): string {
-  //   return str
-  //     .replace(/&/g, '&amp;')
-  //     .replace(/</g, '&lt;')
-  //     .replace(/>/g, '&gt;')
-  //     .replace(/"/g, '&quot;');
-  // }
+  // Add these helper methods if they don't exist
+  private static escapeHtml(str: string): string {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  private static escapeHtmlAttribute(str: string): string {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
 
   private static formatXml(xml: string): string {
     try {
