@@ -25,6 +25,33 @@ export class XmlWysiwygConverter {
     pageNumber: 1,
   };
 
+  private static updateCallback: ((xmlContent: string) => void) | null = null;
+
+  /**
+   * Set a callback to be called when XML changes
+   */
+  static onXmlChange(callback: (xmlContent: string) => void): void {
+    this.updateCallback = callback;
+  }
+
+  /**
+   * Trigger XML update
+   */
+  private static triggerXmlUpdate(): void {
+    if (!this.updateCallback) return;
+
+    try {
+      const wysiwygDoc = document.querySelector('.wysiwyg-document');
+      if (wysiwygDoc) {
+        const xml = this.buildXmlFromDocument(wysiwygDoc);
+        const formatted = this.formatXml(xml);
+        this.updateCallback(formatted);
+      }
+    } catch (error) {
+      console.error('Error updating XML:', error);
+    }
+  }
+
   /**
    * Set schema information for dropdown rendering
    */
@@ -284,6 +311,12 @@ export class XmlWysiwygConverter {
    * Open searchable dropdown modal with documentation support
    */
   private static openSearchableDropdown(trigger: HTMLElement): void {
+    // Prevent multiple modals
+    const existingModal = document.querySelector('.wysiwyg-searchable-modal');
+    if (existingModal) {
+      existingModal.remove();
+    }
+
     const fieldGroup = trigger.closest('.wysiwyg-field-group');
     const cell = trigger.closest('td');
     const container = fieldGroup || cell;
@@ -306,50 +339,55 @@ export class XmlWysiwygConverter {
     modal.setAttribute('data-trigger-id', trigger.id || '');
 
     modal.innerHTML = `
-      <div class="wysiwyg-searchable-content">
-        <div class="wysiwyg-searchable-header">
-          <h3>Select ${formattedTagName}</h3>
-          <button class="wysiwyg-searchable-close" type="button">✕</button>
-        </div>
-        <div class="wysiwyg-searchable-search">
-          <input type="text" 
-                 class="wysiwyg-searchable-input" 
-                 placeholder="Search ${formattedTagName.toLowerCase()}..." 
-                 autofocus />
-        </div>
-        <div class="wysiwyg-searchable-options">
-          <div class="wysiwyg-searchable-option" data-value="">
-            <div class="wysiwyg-option-content">
-              <span class="wysiwyg-option-value">Not specified</span>
-            </div>
+    <div class="wysiwyg-searchable-content">
+      <div class="wysiwyg-searchable-header">
+        <h3>Select ${formattedTagName}</h3>
+        <button class="wysiwyg-searchable-close" type="button">✕</button>
+      </div>
+      <div class="wysiwyg-searchable-search">
+        <input type="text" 
+               class="wysiwyg-searchable-input" 
+               placeholder="Search ${formattedTagName.toLowerCase()}..." 
+               autofocus />
+      </div>
+      <div class="wysiwyg-searchable-options">
+        <div class="wysiwyg-searchable-option" data-value="">
+          <div class="wysiwyg-option-content">
+            <span class="wysiwyg-option-value">Not specified</span>
           </div>
-          ${enumValues
-            .map((value) => {
-              const hasDoc = enumDocs[value];
-              return `
-                  <div class="wysiwyg-searchable-option ${
-                    value === currentValue ? 'selected' : ''
-                  }" data-value="${value}">
-                    <div class="wysiwyg-option-content">
-                      <span class="wysiwyg-option-value">${value}</span>
-                      ${
-                        hasDoc
-                          ? `<span class="wysiwyg-option-doc">${enumDocs[value]}</span>`
-                          : ''
-                      }
-                    </div>
+          ${currentValue === '' ? '<span class="checkmark">✓</span>' : ''}
+        </div>
+        ${enumValues
+          .map((value) => {
+            const hasDoc = enumDocs[value];
+            return `
+                <div class="wysiwyg-searchable-option ${
+                  value === currentValue ? 'selected' : ''
+                }" data-value="${this.escapeHtmlAttribute(value)}">
+                  <div class="wysiwyg-option-content">
+                    <span class="wysiwyg-option-value">${this.escapeHtml(
+                      value
+                    )}</span>
                     ${
-                      value === currentValue
-                        ? '<span class="checkmark">✓</span>'
+                      hasDoc
+                        ? `<span class="wysiwyg-option-doc">${this.escapeHtml(
+                            enumDocs[value]
+                          )}</span>`
                         : ''
                     }
                   </div>
-                `;
-            })
-            .join('')}
-        </div>
+                  ${
+                    value === currentValue
+                      ? '<span class="checkmark">✓</span>'
+                      : ''
+                  }
+                </div>
+              `;
+          })
+          .join('')}
       </div>
-    `;
+    </div>
+  `;
 
     document.body.appendChild(modal);
 
@@ -385,8 +423,8 @@ export class XmlWysiwygConverter {
         });
       });
 
-      // Focus search input
-      searchInput.focus();
+      // Focus search input after a small delay to ensure modal is rendered
+      setTimeout(() => searchInput.focus(), 50);
     }
 
     // Close on background click
@@ -433,12 +471,13 @@ export class XmlWysiwygConverter {
       trigger.textContent = displayText;
       trigger.setAttribute('data-current-value', value);
 
-      // Also update any associated hidden select if it exists
+      // Find the parent container (field group or table cell)
       const fieldGroup = trigger.closest('.wysiwyg-field-group');
       const cell = trigger.closest('td');
       const container = fieldGroup || cell;
 
       if (container) {
+        // Update any associated hidden select if it exists
         const hiddenSelect = container.querySelector(
           `select[data-xml-tag="${tagName}"]`
         ) as HTMLSelectElement;
@@ -446,12 +485,31 @@ export class XmlWysiwygConverter {
           hiddenSelect.value = value;
           hiddenSelect.setAttribute('data-content', value);
         }
+
+        // IMPORTANT: Also update the display span with the new value
+        // This ensures the value persists when the field is saved
+        const displaySpan = container.querySelector(
+          '.wysiwyg-field-display, .wysiwyg-cell-display'
+        ) as HTMLElement;
+        if (displaySpan) {
+          // Store the new value in a data attribute for later retrieval
+          displaySpan.setAttribute(
+            'data-pending-value',
+            value || 'Not specified'
+          );
+        }
       }
     }
 
+    // Close the modal
     this.closeSearchableDropdown();
-  }
 
+    // Prevent event bubbling that might interfere
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  }
   /**
    * Close searchable dropdown
    */
@@ -539,10 +597,20 @@ export class XmlWysiwygConverter {
       let newValue = '';
 
       if (searchableTrigger) {
-        // For searchable dropdown
-        newValue =
-          searchableTrigger.getAttribute('data-current-value') ||
-          'Not specified';
+        // For searchable dropdown - get the current value from the trigger
+        newValue = searchableTrigger.getAttribute('data-current-value') || '';
+
+        // If no value, check for pending value
+        if (!newValue) {
+          newValue =
+            displaySpan.getAttribute('data-pending-value') || 'Not specified';
+        }
+
+        // Clear pending value
+        displaySpan.removeAttribute('data-pending-value');
+
+        // Format for display
+        newValue = newValue || 'Not specified';
         searchableTrigger.style.display = 'none';
       } else if (input) {
         // For regular inputs
@@ -565,6 +633,8 @@ export class XmlWysiwygConverter {
       ) as HTMLElement;
       if (editButton) editButton.style.display = 'inline-flex';
     }
+
+    this.triggerXmlUpdate();
   }
 
   /**
@@ -696,7 +766,17 @@ export class XmlWysiwygConverter {
         let newValue = '';
 
         if (searchableTrigger) {
+          // Get the current value from the trigger
           newValue = searchableTrigger.getAttribute('data-current-value') || '';
+
+          // If no value, check for pending value
+          if (!newValue) {
+            newValue = displaySpan.getAttribute('data-pending-value') || '';
+          }
+
+          // Clear pending value
+          displaySpan.removeAttribute('data-pending-value');
+
           newValue = newValue || 'N/A';
           searchableTrigger.style.display = 'none';
         } else if (input) {
@@ -724,6 +804,8 @@ export class XmlWysiwygConverter {
       '.wysiwyg-edit-row-button'
     ) as HTMLElement;
     if (editButton) editButton.style.display = 'inline-flex';
+
+    this.triggerXmlUpdate();
   }
 
   /**
@@ -913,6 +995,8 @@ export class XmlWysiwygConverter {
     if (row && confirm('Are you sure you want to delete this row?')) {
       row.remove();
     }
+
+    this.triggerXmlUpdate();
   }
 
   /**
@@ -1764,10 +1848,10 @@ export class XmlWysiwygConverter {
         // Render as table with PDF styling
         result += this.renderTable(node, level, isEditable);
       } else if (hasChildElements && !isCollection && level === 1) {
-        // Section header
-        result += `<h2 class="wysiwyg-section">${this.formatTagName(
+        // Section header - STORE THE ORIGINAL TAG NAME
+        result += `<h2 class="wysiwyg-section" data-xml-tag="${
           node.tagName
-        )}</h2>`;
+        }">${this.formatTagName(node.tagName)}</h2>`;
 
         // Add attributes if present
         if (node.attributes.length > 0) {
@@ -1779,10 +1863,10 @@ export class XmlWysiwygConverter {
           result += this.processNode(child as Element, level + 1, isEditable);
         });
       } else if (hasChildElements && !isCollection && level === 2) {
-        // Subsection
-        result += `<h3 class="wysiwyg-subsection">${this.formatTagName(
+        // Subsection - STORE THE ORIGINAL TAG NAME
+        result += `<h3 class="wysiwyg-subsection" data-xml-tag="${
           node.tagName
-        )}</h3>`;
+        }">${this.formatTagName(node.tagName)}</h3>`;
 
         // Process children
         Array.from(node.children).forEach((child) => {
@@ -1957,8 +2041,7 @@ export class XmlWysiwygConverter {
    */
   private static renderTable(
     node: Element,
-    // @ts-ignore
-    level: number,
+    _level: number,
     isEditable: boolean
   ): string {
     const childTagName = node.children[0]?.tagName;
@@ -1969,10 +2052,10 @@ export class XmlWysiwygConverter {
       (child) => child.tagName
     );
 
-    let html = `<div class="wysiwyg-table-container">`;
-    html += `<h3 class="wysiwyg-subsection">${this.formatTagName(
+    let html = `<div class="wysiwyg-table-container" data-collection-tag="${node.tagName}" data-item-tag="${childTagName}">`;
+    html += `<h3 class="wysiwyg-subsection" data-xml-tag="${
       node.tagName
-    )}</h3>`;
+    }">${this.formatTagName(node.tagName)}</h3>`;
 
     if (isEditable) {
       html += `<button class="wysiwyg-add-button" type="button">Add ${this.formatTagName(
@@ -1980,7 +2063,8 @@ export class XmlWysiwygConverter {
       )}</button>`;
     }
 
-    // Add wrapper for overflow
+    // ... rest of table rendering remains the same ...
+
     html += '<div class="wysiwyg-table-wrapper">';
     html += '<table class="wysiwyg-table">';
 
@@ -2012,22 +2096,22 @@ export class XmlWysiwygConverter {
             // Create searchable trigger button for enum fields
             const triggerId = `searchable-${tagName}-${rowIndex}-${colIndex}`;
             html += `<button type="button" 
-                      id="${triggerId}"
-                      class="wysiwyg-searchable-trigger" 
-                      data-xml-tag="${tagName}" 
-                      data-current-value="${text}"
-                      style="display: none;">
-                      ${text || 'Not specified'}
-                    </button>`;
+                    id="${triggerId}"
+                    class="wysiwyg-searchable-trigger" 
+                    data-xml-tag="${tagName}" 
+                    data-current-value="${text}"
+                    style="display: none;">
+                    ${text || 'Not specified'}
+                  </button>`;
           } else {
             const inputType = this.getInputType(text);
             html += `<input type="${inputType}" 
-                      class="wysiwyg-text-input" 
-                      data-xml-tag="${tagName}" 
-                      value="${text}" 
-                      placeholder="${this.formatTagName(tagName)}" 
-                      style="display: none;"
-                      disabled />`;
+                    class="wysiwyg-text-input" 
+                    data-xml-tag="${tagName}" 
+                    value="${text}" 
+                    placeholder="${this.formatTagName(tagName)}" 
+                    style="display: none;"
+                    disabled />`;
           }
         }
 
@@ -2047,8 +2131,8 @@ export class XmlWysiwygConverter {
     });
     html += '</tbody>';
     html += '</table>';
-    html += '</div>'; // Close table wrapper
-    html += '</div>'; // Close table container
+    html += '</div>';
+    html += '</div>';
 
     return html;
   }
@@ -2106,6 +2190,9 @@ export class XmlWysiwygConverter {
   /**
    * Build XML from document structure
    */
+  /**
+   * Build XML from document structure
+   */
   private static buildXmlFromDocument(container: Element): string {
     const titleElement = container.querySelector(
       '.wysiwyg-title-input, .wysiwyg-header h1'
@@ -2116,198 +2203,279 @@ export class XmlWysiwygConverter {
 
     const rootTag =
       titleElement.getAttribute('data-xml-tag') ||
-      titleElement.textContent?.replace(/\s+/g, '') ||
+      this.tagNameFromTitle(titleElement.textContent || '') ||
       'root';
 
-    return this.buildXmlElement(container, rootTag, 0);
+    // Find content container
+    const contentContainer = container.querySelector('.wysiwyg-content');
+    if (!contentContainer) {
+      return `<${rootTag}></${rootTag}>`;
+    }
+
+    // Build the XML
+    let xml = `<${rootTag}>`;
+
+    // Process the content in order, keeping track of what we've processed
+    const processedIndices = new Set<number>();
+    const children = Array.from(contentContainer.children);
+
+    for (let i = 0; i < children.length; i++) {
+      // Skip if already processed
+      if (processedIndices.has(i)) continue;
+
+      const element = children[i];
+
+      if (element.classList.contains('wysiwyg-section')) {
+        // Get the ACTUAL tag name from data attribute
+        const sectionTag =
+          element.getAttribute('data-xml-tag') ||
+          this.tagNameFromTitle(element.textContent?.trim() || '');
+
+        processedIndices.add(i);
+
+        // Collect all elements until the next section or table
+        const sectionFields: Element[] = [];
+        let j = i + 1;
+
+        while (j < children.length) {
+          const nextElement = children[j];
+
+          // Stop at next section or table container
+          if (
+            nextElement.classList.contains('wysiwyg-section') ||
+            nextElement.classList.contains('wysiwyg-subsection') ||
+            nextElement.classList.contains('wysiwyg-table-container')
+          ) {
+            break;
+          }
+
+          // Collect field groups
+          if (nextElement.classList.contains('wysiwyg-field-group')) {
+            sectionFields.push(nextElement);
+            processedIndices.add(j);
+          }
+
+          j++;
+        }
+
+        // Build section XML
+        xml += `<${sectionTag}>`;
+        sectionFields.forEach((field) => {
+          const fieldXml = this.extractFieldXml(field);
+          if (fieldXml) xml += fieldXml;
+        });
+        xml += `</${sectionTag}>`;
+      } else if (element.classList.contains('wysiwyg-table-container')) {
+        // Handle tables/collections
+        processedIndices.add(i);
+        const tableXml = this.extractTableXmlWithStoredTags(element);
+        if (tableXml) xml += tableXml;
+      } else if (element.classList.contains('wysiwyg-field-group')) {
+        // Standalone field (not part of any section)
+        if (!processedIndices.has(i)) {
+          processedIndices.add(i);
+          const fieldXml = this.extractFieldXml(element);
+          if (fieldXml) xml += fieldXml;
+        }
+      }
+    }
+
+    xml += `</${rootTag}>`;
+    return xml;
   }
 
-  /**
-   * Build XML element recursively
-   */
-  private static buildXmlElement(
-    container: Element,
-    tagName: string,
-    // @ts-ignore
-    level: number
+  private static extractTableXmlWithStoredTags(
+    tableContainer: Element
   ): string {
-    let xml = `<${tagName}`;
+    // Get the stored tag names
+    const collectionTag = tableContainer.getAttribute('data-collection-tag');
+    const itemTag = tableContainer.getAttribute('data-item-tag');
 
-    // Handle attributes
-    const attributeInputs = container.querySelectorAll(`input[data-attr-name]`);
-    attributeInputs.forEach((input) => {
-      const inputElement = input as HTMLInputElement;
-      const attrName = inputElement.getAttribute('data-attr-name');
-      const attrValue = inputElement.value || '';
-      if (attrName && attrValue) {
-        xml += ` ${attrName}="${this.escapeXmlAttribute(attrValue)}"`;
-      }
-    });
+    if (!collectionTag || !itemTag) {
+      // Fallback to the old method if tags aren't stored
+      return this.extractTableXml(tableContainer);
+    }
 
-    // Find content elements
-    const contentSections = container.querySelectorAll('.wysiwyg-content > *');
+    let xml = `<${collectionTag}>`;
 
-    if (contentSections.length > 0) {
-      xml += '>';
+    // Process each row
+    const rows = tableContainer.querySelectorAll('tbody tr');
 
-      // Process each section
-      contentSections.forEach((section) => {
-        // Handle tables
-        if (section.classList.contains('wysiwyg-table-container')) {
-          const sectionTitle = section
-            .querySelector('.wysiwyg-subsection')
-            ?.textContent?.trim();
+    rows.forEach((row) => {
+      const dataCells = row.querySelectorAll('td[data-xml-tag]');
+      if (dataCells.length === 0) return;
 
-          // @ts-ignore
-          const sectionTag = this.tagNameFromTitle(sectionTitle || '');
+      xml += `<${itemTag}>`;
 
-          const rows = section.querySelectorAll('tbody tr');
-          rows.forEach((row) => {
-            const firstCell = row.querySelector('td');
-            const cellTag = firstCell?.getAttribute('data-xml-tag');
-            if (cellTag) {
-              const itemTag = cellTag.split('.')[0]; // Get base tag name
-              xml += `<${itemTag}>`;
+      dataCells.forEach((cell) => {
+        const cellTag = cell.getAttribute('data-xml-tag');
+        if (!cellTag) return;
 
-              row.querySelectorAll('td[data-xml-tag]').forEach((cell) => {
-                const fieldTag = cell.getAttribute('data-xml-tag');
-                const displaySpan = cell.querySelector('.wysiwyg-cell-display');
-                const input = cell.querySelector(
-                  'input, textarea'
-                ) as HTMLInputElement;
-                const searchableTrigger = cell.querySelector(
-                  '.wysiwyg-searchable-trigger'
-                ) as HTMLElement;
+        const displaySpan = cell.querySelector('.wysiwyg-cell-display');
+        let cellValue = '';
 
-                let value = '';
-                if (displaySpan) {
-                  value = displaySpan.textContent || '';
-                  // Handle searchable dropdown values
-                  if (searchableTrigger && value === 'N/A') {
-                    value =
-                      searchableTrigger.getAttribute('data-current-value') ||
-                      '';
-                  }
-                } else if (input) {
-                  value = input.value || '';
-                }
-
-                if (fieldTag) {
-                  xml += `<${fieldTag}>${this.escapeXmlContent(
-                    value
-                  )}</${fieldTag}>`;
-                }
-              });
-
-              xml += `</${itemTag}>`;
-            }
-          });
-        }
-        // Handle sections with headers
-        else if (
-          section.querySelector('.wysiwyg-section, .wysiwyg-subsection')
-        ) {
-          const sectionHeader = section.querySelector(
-            '.wysiwyg-section, .wysiwyg-subsection'
-          );
-          const sectionTag = this.tagNameFromTitle(
-            sectionHeader?.textContent || ''
-          );
-          xml += `<${sectionTag}>`;
-
-          // Process fields in this section
-          section.querySelectorAll('.wysiwyg-field-group').forEach((field) => {
-            const displaySpan = field.querySelector('.wysiwyg-field-display');
-            const input = field.querySelector(
-              'input, textarea'
-            ) as HTMLInputElement;
-            const searchableTrigger = field.querySelector(
-              '.wysiwyg-searchable-trigger'
-            ) as HTMLElement;
-
-            if (input || searchableTrigger) {
-              const fieldTag =
-                input?.getAttribute('data-xml-tag') ||
-                searchableTrigger?.getAttribute('data-xml-tag');
-
-              let value = '';
-              if (displaySpan) {
-                value = displaySpan.textContent || '';
-                // Handle searchable dropdown special values
-                if (value === 'Not specified') {
-                  value = '';
-                }
-              } else if (searchableTrigger) {
-                value =
-                  searchableTrigger.getAttribute('data-current-value') || '';
-              } else if (input) {
-                value = input.value || '';
-              }
-
-              if (fieldTag && value) {
-                xml += `<${fieldTag}>${this.escapeXmlContent(
-                  value
-                )}</${fieldTag}>`;
-              }
-            }
-          });
-
-          xml += `</${sectionTag}>`;
-        }
-        // Handle standalone fields
-        else if (section.classList.contains('wysiwyg-field-group')) {
-          const displaySpan = section.querySelector('.wysiwyg-field-display');
-          const input = section.querySelector(
-            'input, textarea'
-          ) as HTMLInputElement;
-          const searchableTrigger = section.querySelector(
-            '.wysiwyg-searchable-trigger'
-          ) as HTMLElement;
-
-          if (input || searchableTrigger) {
-            const fieldTag =
-              input?.getAttribute('data-xml-tag') ||
-              searchableTrigger?.getAttribute('data-xml-tag');
-
-            let value = '';
-            if (displaySpan) {
-              value = displaySpan.textContent || '';
-              // Handle searchable dropdown special values
-              if (value === 'Not specified') {
-                value = '';
-              }
-            } else if (searchableTrigger) {
-              value =
-                searchableTrigger.getAttribute('data-current-value') || '';
-            } else if (input) {
-              value = input.value || '';
-            }
-
-            if (fieldTag && value) {
-              xml += `<${fieldTag}>${this.escapeXmlContent(
-                value
-              )}</${fieldTag}>`;
-            }
+        if (displaySpan) {
+          cellValue = displaySpan.textContent || '';
+          if (cellValue === 'N/A' || cellValue === 'Not specified') {
+            cellValue = '';
           }
+        }
+
+        if (cellValue) {
+          xml += `<${cellTag}>${this.escapeXmlContent(cellValue)}</${cellTag}>`;
         }
       });
 
-      xml += `</${tagName}>`;
-    } else {
-      xml += '/>';
-    }
+      xml += `</${itemTag}>`;
+    });
+
+    xml += `</${collectionTag}>`;
 
     return xml;
   }
 
   /**
-   * Convert title text to tag name
+   * Extract XML from a field group
+   */
+  private static extractFieldXml(fieldGroup: Element): string {
+    const displaySpan = fieldGroup.querySelector('.wysiwyg-field-display');
+    const input = fieldGroup.querySelector(
+      'input, textarea'
+    ) as HTMLInputElement;
+    const searchableTrigger = fieldGroup.querySelector(
+      '.wysiwyg-searchable-trigger'
+    ) as HTMLElement;
+
+    let fieldTag = '';
+    let value = '';
+
+    // Get the field tag
+    if (input) {
+      fieldTag = input.getAttribute('data-xml-tag') || '';
+    } else if (searchableTrigger) {
+      fieldTag = searchableTrigger.getAttribute('data-xml-tag') || '';
+    }
+
+    // Get the current value
+    if (displaySpan) {
+      value = displaySpan.textContent || '';
+      // Clean up special values
+      if (value === 'N/A' || value === 'Not specified') {
+        value = '';
+      }
+    }
+
+    // Only return XML if we have both tag and value
+    if (fieldTag && value) {
+      return `<${fieldTag}>${this.escapeXmlContent(value)}</${fieldTag}>`;
+    }
+
+    return '';
+  }
+  /**
+   * Extract XML from a table container
+   */
+  private static extractTableXml(tableContainer: Element): string {
+    let xml = '';
+
+    // Get the collection name from the section title
+    const sectionTitle =
+      tableContainer
+        .querySelector('.wysiwyg-subsection')
+        ?.textContent?.trim() || '';
+    const collectionTag = this.tagNameFromTitle(sectionTitle);
+
+    if (!collectionTag) return '';
+
+    // Determine item tag (e.g., "Employees" -> "Employee")
+    let itemTag = collectionTag;
+    if (collectionTag.endsWith('ies')) {
+      // e.g., "Categories" -> "Category"
+      itemTag = collectionTag.slice(0, -3) + 'y';
+    } else if (collectionTag.endsWith('es')) {
+      // e.g., "Addresses" -> "Address"
+      itemTag = collectionTag.slice(0, -2);
+    } else if (collectionTag.endsWith('s')) {
+      // e.g., "Employees" -> "Employee"
+      itemTag = collectionTag.slice(0, -1);
+    }
+
+    // Start collection tag
+    xml += `<${collectionTag}>`;
+
+    // Process each row
+    const rows = tableContainer.querySelectorAll('tbody tr');
+
+    rows.forEach((row) => {
+      // Skip if this is an empty row or doesn't have data cells
+      const dataCells = row.querySelectorAll('td[data-xml-tag]');
+      if (dataCells.length === 0) return;
+
+      xml += `<${itemTag}>`;
+
+      // Process each cell in the row
+      dataCells.forEach((cell) => {
+        const cellTag = cell.getAttribute('data-xml-tag');
+        if (!cellTag) return;
+
+        // Get the value from display span (visible value)
+        const displaySpan = cell.querySelector('.wysiwyg-cell-display');
+        let cellValue = '';
+
+        if (displaySpan) {
+          cellValue = displaySpan.textContent || '';
+          // Clean up special values
+          if (cellValue === 'N/A' || cellValue === 'Not specified') {
+            cellValue = '';
+          }
+        }
+
+        // Only add the field if it has a value
+        if (cellValue) {
+          xml += `<${cellTag}>${this.escapeXmlContent(cellValue)}</${cellTag}>`;
+        }
+      });
+
+      xml += `</${itemTag}>`;
+    });
+
+    xml += `</${collectionTag}>`;
+
+    return xml;
+  }
+
+  /**
+   * Convert display title back to original tag name
+   * This reverses the formatTagName function
    */
   private static tagNameFromTitle(title: string): string {
-    return title
-      .trim()
-      .replace(/\s+/g, '')
-      .replace(/^(.)/, (match) => match.toLowerCase());
+    if (!title) return '';
+
+    // This should reverse what formatTagName does:
+    // formatTagName converts "CompanyInfo" to "Company Info"
+    // So we need to convert "Company Info" back to "CompanyInfo"
+
+    // Remove spaces and make camelCase
+    const words = title.trim().split(/\s+/);
+
+    if (words.length === 0) return '';
+
+    // First word starts with lowercase (unless it's a single word)
+    // Other words start with uppercase
+    return words
+      .map((word, index) => {
+        if (index === 0 && words.length > 1) {
+          // First word of multi-word: lowercase first letter
+          return word.charAt(0).toLowerCase() + word.slice(1).toLowerCase();
+        } else if (index === 0) {
+          // Single word: keep original casing
+          return word;
+        } else {
+          // Subsequent words: uppercase first letter
+          return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        }
+      })
+      .join('');
   }
 
   // Utility methods (same as before)
@@ -2413,12 +2581,20 @@ export class XmlWysiwygConverter {
       .replace(/>/g, '&gt;');
   }
 
-  private static escapeXmlAttribute(str: string): string {
+  // Add these helper methods if they don't exist
+  private static escapeHtml(str: string): string {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  private static escapeHtmlAttribute(str: string): string {
     return str
       .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/>/g, '&gt;');
   }
 
   private static formatXml(xml: string): string {
