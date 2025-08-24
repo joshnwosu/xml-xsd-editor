@@ -116,6 +116,15 @@ export const useFileStore = create<FileState>((set, get) => ({
 
       const schemaInfo: SchemaInfo = {};
 
+      // FIRST: Collect all type definitions
+      const typeDefinitions = new Map<
+        string,
+        {
+          type: 'string' | 'number' | 'enum' | 'date' | undefined;
+          enumValues?: string[];
+        }
+      >();
+
       // Find all simpleType definitions with restrictions
       const simpleTypes = xsdDoc.querySelectorAll(
         'xs\\:simpleType, simpleType'
@@ -126,12 +135,15 @@ export const useFileStore = create<FileState>((set, get) => ({
 
         // Look for string restrictions with enumerations
         const restriction = simpleType.querySelector(
-          'xs\\:restriction[base="xs:string"], restriction[base="xs:string"]'
+          'xs\\:restriction[base="xs:string"], restriction[base="xs:string"], ' +
+            'xs\\:restriction[base="string"], restriction[base="string"]'
         );
+
         if (restriction) {
           const enumerations = restriction.querySelectorAll(
             'xs\\:enumeration, enumeration'
           );
+
           if (enumerations.length > 0) {
             const enumValues: string[] = [];
             enumerations.forEach((enumElement) => {
@@ -142,47 +154,56 @@ export const useFileStore = create<FileState>((set, get) => ({
             });
 
             if (enumValues.length > 0) {
-              // Store by type name (e.g., "CategoryType")
-              schemaInfo[typeName] = {
+              typeDefinitions.set(typeName, {
                 type: 'enum',
                 enumValues,
-              };
+              });
             }
           }
         }
       });
 
-      // Find elements that use these types
+      // SECOND: Process elements and resolve their types
       const elements = xsdDoc.querySelectorAll('xs\\:element, element');
-      elements.forEach((element) => {
-        const elementName = element.getAttribute('name');
-        const elementType = element.getAttribute('type');
-
-        if (elementName && elementType) {
-          // Check if the type is one of our enum types
-          if (schemaInfo[elementType]) {
-            // Map element name to the schema info
-            schemaInfo[elementName] = schemaInfo[elementType];
-          }
-        }
-      });
-
-      // Also look for inline simpleType definitions within elements
       elements.forEach((element) => {
         const elementName = element.getAttribute('name');
         if (!elementName) return;
 
+        // PRIORITIZE TYPE ATTRIBUTE
+        const elementType = element.getAttribute('type');
+
+        if (elementType) {
+          // Remove namespace prefix if present
+          const cleanType = elementType.includes(':')
+            ? elementType.split(':')[1]
+            : elementType;
+
+          // Check if this type is one of our enum types
+          const typeDefinition = typeDefinitions.get(cleanType);
+          if (typeDefinition) {
+            schemaInfo[elementName] = {
+              type: typeDefinition.type,
+              enumValues: typeDefinition.enumValues,
+            };
+            return; // Found by type, move to next element
+          }
+        }
+
+        // If no type or type not found, check for inline simpleType
         const inlineSimpleType = element.querySelector(
           'xs\\:simpleType, simpleType'
         );
         if (inlineSimpleType) {
           const restriction = inlineSimpleType.querySelector(
-            'xs\\:restriction[base="xs:string"], restriction[base="xs:string"]'
+            'xs\\:restriction[base="xs:string"], restriction[base="xs:string"], ' +
+              'xs\\:restriction[base="string"], restriction[base="string"]'
           );
+
           if (restriction) {
             const enumerations = restriction.querySelectorAll(
               'xs\\:enumeration, enumeration'
             );
+
             if (enumerations.length > 0) {
               const enumValues: string[] = [];
               enumerations.forEach((enumElement) => {
@@ -203,6 +224,18 @@ export const useFileStore = create<FileState>((set, get) => ({
         }
       });
 
+      // THIRD: Also add the type definitions themselves to schema info
+      // This helps when elements directly reference these types
+      typeDefinitions.forEach((definition, typeName) => {
+        if (!schemaInfo[typeName] && definition.enumValues) {
+          schemaInfo[typeName] = {
+            type: definition.type,
+            enumValues: definition.enumValues,
+          };
+        }
+      });
+
+      console.log('Parsed schema info:', schemaInfo); // Debug log
       return schemaInfo;
     } catch (error) {
       console.error('Error parsing XSD schema:', error);
