@@ -70,6 +70,7 @@ export class XmlWysiwygConverter {
    * Enrich schema info with documentation extracted from XSD
    */
   private static enrichSchemaWithDocumentation(): void {
+    // Enrich each field with its enum data
     Object.keys(this.schemaInfo).forEach((tagName) => {
       if (this.schemaInfo[tagName].type === 'enum') {
         const enumData = this.parseEnumerationWithDocumentation(tagName);
@@ -96,27 +97,43 @@ export class XmlWysiwygConverter {
     if (!this.xsdContent) return result;
 
     try {
-      // First, try to parse from proper XML structure
       const parser = new DOMParser();
       const xsdDoc = parser.parseFromString(this.xsdContent, 'application/xml');
 
-      // Find the element or type definition for this tag
-      const elements = xsdDoc.querySelectorAll('xs\\:element, element');
+      // First, find all simpleType definitions and store them by name
+      const typeDefinitions = new Map<
+        string,
+        { values: string[]; documentation: { [value: string]: string } }
+      >();
 
-      for (const element of elements) {
-        const elementName = element.getAttribute('name');
-        if (elementName === tagName) {
-          // Look for enumerations in restrictions
-          const enumerations = element.querySelectorAll(
+      // Collect all simpleType definitions
+      const simpleTypes = xsdDoc.querySelectorAll(
+        'xs\\:simpleType, simpleType'
+      );
+      simpleTypes.forEach((simpleType) => {
+        const typeName = simpleType.getAttribute('name');
+        if (!typeName) return;
+
+        const typeData = {
+          values: [] as string[],
+          documentation: {} as { [value: string]: string },
+        };
+
+        // Look for enumerations in this type
+        const restriction = simpleType.querySelector(
+          'xs\\:restriction, restriction'
+        );
+        if (restriction) {
+          const enumerations = restriction.querySelectorAll(
             'xs\\:enumeration, enumeration'
           );
 
           enumerations.forEach((enumNode) => {
             const value = enumNode.getAttribute('value');
             if (value) {
-              result.values.push(value);
+              typeData.values.push(value);
 
-              // Look for proper annotation
+              // Look for annotation/documentation
               const annotation = enumNode.querySelector(
                 'xs\\:annotation, annotation'
               );
@@ -125,47 +142,93 @@ export class XmlWysiwygConverter {
                   'xs\\:documentation, documentation'
                 );
                 if (documentation && documentation.textContent) {
-                  result.documentation[value] =
+                  typeData.documentation[value] =
                     documentation.textContent.trim();
                 }
               }
             }
           });
+        }
+
+        if (typeData.values.length > 0) {
+          typeDefinitions.set(typeName, typeData);
+        }
+      });
+
+      // Now find the element and check its type attribute FIRST
+      const elements = xsdDoc.querySelectorAll('xs\\:element, element');
+
+      for (const element of elements) {
+        const elementName = element.getAttribute('name');
+
+        if (elementName === tagName) {
+          // PRIORITIZE TYPE ATTRIBUTE
+          const elementType = element.getAttribute('type');
+
+          if (elementType) {
+            // Remove namespace prefix if present (e.g., "xs:string" -> "string")
+            const cleanType = elementType.includes(':')
+              ? elementType.split(':')[1]
+              : elementType;
+
+            // Check if this type is in our type definitions
+            const typeData = typeDefinitions.get(cleanType);
+            if (typeData) {
+              result.values = typeData.values;
+              result.documentation = typeData.documentation;
+              return result; // Found by type, return immediately
+            }
+          }
+
+          // If no type or type not found, look for inline simpleType
+          const inlineSimpleType = element.querySelector(
+            'xs\\:simpleType, simpleType'
+          );
+          if (inlineSimpleType) {
+            const restriction = inlineSimpleType.querySelector(
+              'xs\\:restriction, restriction'
+            );
+            if (restriction) {
+              const enumerations = restriction.querySelectorAll(
+                'xs\\:enumeration, enumeration'
+              );
+
+              enumerations.forEach((enumNode) => {
+                const value = enumNode.getAttribute('value');
+                if (value) {
+                  result.values.push(value);
+
+                  // Look for annotation
+                  const annotation = enumNode.querySelector(
+                    'xs\\:annotation, annotation'
+                  );
+                  if (annotation) {
+                    const documentation = annotation.querySelector(
+                      'xs\\:documentation, documentation'
+                    );
+                    if (documentation && documentation.textContent) {
+                      result.documentation[value] =
+                        documentation.textContent.trim();
+                    }
+                  }
+                }
+              });
+            }
+          }
+
+          // If we found values, return
+          if (result.values.length > 0) {
+            return result;
+          }
         }
       }
 
-      // Also check simpleType definitions
-      const simpleTypes = xsdDoc.querySelectorAll(
-        'xs\\:simpleType, simpleType'
-      );
-      for (const simpleType of simpleTypes) {
-        const typeName = simpleType.getAttribute('name');
-        if (typeName === tagName || typeName === `${tagName}Type`) {
-          const enumerations = simpleType.querySelectorAll(
-            'xs\\:enumeration, enumeration'
-          );
-
-          enumerations.forEach((enumNode) => {
-            const value = enumNode.getAttribute('value');
-            if (value && !result.values.includes(value)) {
-              result.values.push(value);
-
-              // Check for annotation
-              const annotation = enumNode.querySelector(
-                'xs\\:annotation, annotation'
-              );
-              if (annotation) {
-                const documentation = annotation.querySelector(
-                  'xs\\:documentation, documentation'
-                );
-                if (documentation && documentation.textContent) {
-                  result.documentation[value] =
-                    documentation.textContent.trim();
-                }
-              }
-            }
-          });
-        }
+      // Also check if tagName itself matches a type definition
+      const directTypeData = typeDefinitions.get(tagName);
+      if (directTypeData) {
+        result.values = directTypeData.values;
+        result.documentation = directTypeData.documentation;
+        return result;
       }
 
       // If we found values but no documentation, try to extract from comments in raw XSD
@@ -187,7 +250,7 @@ export class XmlWysiwygConverter {
       console.warn('Error parsing enumeration documentation from XML:', error);
     }
 
-    // If no values found via DOM parsing, try pure regex extraction
+    // If no values found via DOM parsing, try pure regex extraction as fallback
     if (result.values.length === 0) {
       const patterns = [
         /<xs:enumeration\s+value="([^"]+)"[^>]*>(?:\s*<!--\s*(.*?)\s*-->)?/g,
@@ -331,15 +394,9 @@ export class XmlWysiwygConverter {
 
     const tagName = trigger.getAttribute('data-xml-tag') || '';
     const currentValue = trigger.getAttribute('data-current-value') || '';
-
-    // Get enumeration values and documentation from schema
-    const schemaInfo = this.schemaInfo[tagName];
-    const enumValues = schemaInfo?.enumValues || [];
-    const enumDocs = schemaInfo?.enumDocumentation || {};
-
     const formattedTagName = this.formatTagName(tagName);
 
-    // Create modal overlay
+    // Create modal overlay with empty options container
     const modal = document.createElement('div');
     modal.className = 'wysiwyg-searchable-modal';
     modal.setAttribute('data-xml-tag', tagName);
@@ -348,37 +405,7 @@ export class XmlWysiwygConverter {
     // Store reference to trigger
     (modal as any)._trigger = trigger;
 
-    // Build options HTML
-    let optionsHtml = `
-    <div class="wysiwyg-searchable-option" data-value="" role="option" tabindex="0">
-      <div class="wysiwyg-option-content">
-        <span class="wysiwyg-option-value">Not specified</span>
-      </div>
-      ${currentValue === '' ? '<span class="checkmark">✓</span>' : ''}
-    </div>
-  `;
-
-    enumValues.forEach((value) => {
-      const hasDoc = enumDocs[value];
-      const isSelected = value === currentValue;
-      optionsHtml += `
-      <div class="wysiwyg-searchable-option ${isSelected ? 'selected' : ''}" 
-           data-value="${value.replace(/"/g, '&quot;')}" 
-           role="option" 
-           tabindex="0">
-        <div class="wysiwyg-option-content">
-          <span class="wysiwyg-option-value">${value}</span>
-          ${
-            hasDoc
-              ? `<span class="wysiwyg-option-doc">${enumDocs[value]}</span>`
-              : ''
-          }
-        </div>
-        ${isSelected ? '<span class="checkmark">✓</span>' : ''}
-      </div>
-    `;
-    });
-
+    // Create modal structure without options first
     modal.innerHTML = `
     <div class="wysiwyg-searchable-content" role="dialog" aria-modal="true">
       <div class="wysiwyg-searchable-header">
@@ -392,23 +419,73 @@ export class XmlWysiwygConverter {
                aria-label="Search options" />
       </div>
       <div class="wysiwyg-searchable-options" role="listbox">
-        ${optionsHtml}
+        <div class="wysiwyg-loading">Loading options...</div>
       </div>
     </div>
   `;
 
     document.body.appendChild(modal);
 
+    // Now dynamically populate the options after modal is in DOM
+    requestAnimationFrame(() => {
+      this.populateDropdownOptions(modal, tagName, currentValue);
+    });
+  }
+
+  /**
+   * Populate dropdown options dynamically - NEW METHOD
+   */
+  private static populateDropdownOptions(
+    modal: Element,
+    tagName: string,
+    currentValue: string
+  ): void {
+    const optionsContainer = modal.querySelector('.wysiwyg-searchable-options');
+    if (!optionsContainer) return;
+
+    // Clear loading message
+    optionsContainer.innerHTML = '';
+
+    // Get fresh schema info for this specific tag
+    const schemaInfo = this.schemaInfo[tagName];
+    const enumValues = schemaInfo?.enumValues || [];
+    const enumDocs = schemaInfo?.enumDocumentation || {};
+
+    // Create and append "Not specified" option
+    const notSpecifiedOption = this.createDropdownOption(
+      '',
+      'Not specified',
+      '',
+      currentValue === ''
+    );
+    optionsContainer.appendChild(notSpecifiedOption);
+
+    // Create and append each enum value option
+    enumValues.forEach((value) => {
+      const documentation = enumDocs[value] || '';
+      const isSelected = value === currentValue;
+      const optionElement = this.createDropdownOption(
+        value,
+        value,
+        documentation,
+        isSelected
+      );
+      optionsContainer.appendChild(optionElement);
+    });
+
     // Set up search functionality
     const searchInput = modal.querySelector(
       '.wysiwyg-searchable-input'
     ) as HTMLInputElement;
-    const optionsContainer = modal.querySelector('.wysiwyg-searchable-options');
 
-    if (searchInput && optionsContainer) {
-      searchInput.addEventListener('input', (e) => {
+    if (searchInput) {
+      // Remove any existing listeners
+      const newSearchInput = searchInput.cloneNode(true) as HTMLInputElement;
+      searchInput.parentNode?.replaceChild(newSearchInput, searchInput);
+
+      newSearchInput.addEventListener('input', (e) => {
         e.stopPropagation();
-        const searchTerm = searchInput.value.toLowerCase();
+        const searchTerm = newSearchInput.value.toLowerCase();
         const options = optionsContainer.querySelectorAll(
           '.wysiwyg-searchable-option'
         );
@@ -431,7 +508,7 @@ export class XmlWysiwygConverter {
       });
 
       // Add keyboard navigation
-      searchInput.addEventListener('keydown', (e) => {
+      newSearchInput.addEventListener('keydown', (e) => {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
           const firstVisible = optionsContainer.querySelector(
@@ -442,52 +519,136 @@ export class XmlWysiwygConverter {
       });
 
       // Focus search input
-      requestAnimationFrame(() => {
-        searchInput.focus();
-      });
+      newSearchInput.focus();
     }
 
-    // Add direct click handlers to options (backup for event delegation)
-    const options = modal.querySelectorAll('.wysiwyg-searchable-option');
+    // Attach event handlers to all options
+    this.attachOptionHandlers(optionsContainer, modal);
+
+    // Set up modal close handlers
+    this.setupModalCloseHandlers(modal);
+  }
+
+  /**
+   * Create a single dropdown option element - NEW METHOD
+   */
+  private static createDropdownOption(
+    value: string,
+    displayText: string,
+    documentation: string,
+    isSelected: boolean
+  ): HTMLElement {
+    const option = document.createElement('div');
+    option.className = `wysiwyg-searchable-option ${
+      isSelected ? 'selected' : ''
+    }`;
+    option.setAttribute('data-value', value);
+    option.setAttribute('role', 'option');
+    option.setAttribute('tabindex', '0');
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'wysiwyg-option-content';
+
+    const valueSpan = document.createElement('span');
+    valueSpan.className = 'wysiwyg-option-value';
+    valueSpan.textContent = displayText;
+    contentDiv.appendChild(valueSpan);
+
+    if (documentation) {
+      const docSpan = document.createElement('span');
+      docSpan.className = 'wysiwyg-option-doc';
+      docSpan.textContent = documentation;
+      contentDiv.appendChild(docSpan);
+    }
+
+    option.appendChild(contentDiv);
+
+    if (isSelected) {
+      const checkmark = document.createElement('span');
+      checkmark.className = 'checkmark';
+      checkmark.textContent = '✓';
+      option.appendChild(checkmark);
+    }
+
+    return option;
+  }
+
+  /**
+   * Attach event handlers to options - NEW METHOD
+   */
+  private static attachOptionHandlers(
+    optionsContainer: Element,
+    modal: Element
+  ): void {
+    const options = optionsContainer.querySelectorAll(
+      '.wysiwyg-searchable-option'
+    );
+
     options.forEach((option) => {
+      // Remove any existing handlers by cloning
+      const newOption = option.cloneNode(true) as HTMLElement;
+      option.parentNode?.replaceChild(newOption, option);
+
       // Direct click handler
-      option.addEventListener('click', (e) => {
+      newOption.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.handleOptionSelection(option as HTMLElement, modal);
+        this.handleOptionSelection(newOption, modal);
       });
 
       // Keyboard support
-      option.addEventListener('keydown', (e) => {
+      newOption.addEventListener('keydown', (e) => {
         const evt = e as KeyboardEvent;
         if (evt.key === 'Enter' || evt.key === ' ') {
           e.preventDefault();
           e.stopPropagation();
-          this.handleOptionSelection(option as HTMLElement, modal);
+          this.handleOptionSelection(newOption, modal);
         } else if (evt.key === 'ArrowDown') {
           e.preventDefault();
-          const next = option.nextElementSibling as HTMLElement;
-          if (next && next.classList.contains('wysiwyg-searchable-option')) {
+          const next = newOption.nextElementSibling as HTMLElement;
+          if (
+            next &&
+            next.classList.contains('wysiwyg-searchable-option') &&
+            next.style.display !== 'none'
+          ) {
             next.focus();
           }
         } else if (evt.key === 'ArrowUp') {
           e.preventDefault();
-          const prev = option.previousElementSibling as HTMLElement;
-          if (prev && prev.classList.contains('wysiwyg-searchable-option')) {
+          const prev = newOption.previousElementSibling as HTMLElement;
+          if (
+            prev &&
+            prev.classList.contains('wysiwyg-searchable-option') &&
+            prev.style.display !== 'none'
+          ) {
             prev.focus();
           }
         }
       });
     });
+  }
 
+  /**
+   * Setup modal close handlers - NEW METHOD
+   */
+  private static setupModalCloseHandlers(modal: Element): void {
     // Close on background click
-    modal.addEventListener('click', (e) => {
+    const bgClickHandler = (e: Event) => {
       if (e.target === modal) {
         e.preventDefault();
         e.stopPropagation();
         this.closeSearchableDropdown();
       }
-    });
+    };
+
+    // Remove old handler if exists
+    const oldBgHandler = (modal as any)._bgClickHandler;
+    if (oldBgHandler) {
+      modal.removeEventListener('click', oldBgHandler);
+    }
+
+    modal.addEventListener('click', bgClickHandler);
+    (modal as any)._bgClickHandler = bgClickHandler;
 
     // Close on Escape key
     const escapeHandler = (e: KeyboardEvent) => {
@@ -495,6 +656,13 @@ export class XmlWysiwygConverter {
         this.closeSearchableDropdown();
       }
     };
+
+    // Remove old handler if exists
+    const oldEscapeHandler = (modal as any)._escapeHandler;
+    if (oldEscapeHandler) {
+      document.removeEventListener('keydown', oldEscapeHandler);
+    }
+
     document.addEventListener('keydown', escapeHandler);
     (modal as any)._escapeHandler = escapeHandler;
   }
@@ -563,11 +731,23 @@ export class XmlWysiwygConverter {
   private static closeSearchableDropdown(): void {
     const modal = document.querySelector('.wysiwyg-searchable-modal');
     if (modal) {
-      // Remove escape handler if it exists
+      // Remove escape handler
       const escapeHandler = (modal as any)._escapeHandler;
       if (escapeHandler) {
         document.removeEventListener('keydown', escapeHandler);
       }
+
+      // Remove background click handler
+      const bgClickHandler = (modal as any)._bgClickHandler;
+      if (bgClickHandler) {
+        modal.removeEventListener('click', bgClickHandler);
+      }
+
+      // Clear any stored references
+      (modal as any)._trigger = null;
+      (modal as any)._escapeHandler = null;
+      (modal as any)._bgClickHandler = null;
+
       modal.remove();
     }
   }
@@ -1073,6 +1253,13 @@ export class XmlWysiwygConverter {
         min-height: 100vh;
         font-family: 'Ubuntu', 'Times New Roman', Times, serif;
       }
+
+      .wysiwyg-loading {
+      padding: 20px;
+      text-align: center;
+      color: #666;
+      font-style: italic;
+    }
 
       .wysiwyg-page {
         width: 100%;
