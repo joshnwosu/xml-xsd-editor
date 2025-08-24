@@ -1,11 +1,8 @@
 import React from 'react';
 import { EditorToolbar } from '@/components/toolbar/editor-toolbar';
 import { StatusBar } from '@/components/editor/status-bar';
-import { EditorHeader } from './editor-header';
 import { ErrorDisplay } from './error-display';
 import { WysiwygEditor } from './wysiwyg-editor';
-import { XmlViewer } from './xml-viewer';
-import { EditorStyles } from './editor-styles';
 import { useEditor } from '@/hooks/use-editor';
 import { useFileStore } from '@/store/file-store';
 
@@ -18,13 +15,9 @@ export const XmlWysiwygEditor: React.FC = () => {
     viewMode,
     hasChanges,
     error,
-    xmlContent,
     editorRef,
-    loadXmlContent,
-    saveToXml,
     handleInput,
     handleKeyDown,
-    toggleViewMode,
     updateActiveFormats,
     execCommand,
     insertLink,
@@ -34,7 +27,7 @@ export const XmlWysiwygEditor: React.FC = () => {
   return (
     <div className='w-full h-full flex flex-col'>
       {/* EditorToolbar - only show in WYSIWYG mode AND when activeTab is 'pdf' */}
-      {viewMode === 'wysiwyg' && activeTab === 'pdf' && (
+      {activeTab === 'pdf' && (
         <EditorToolbar
           activeFormats={activeFormats}
           onCommand={execCommand}
@@ -44,33 +37,20 @@ export const XmlWysiwygEditor: React.FC = () => {
         />
       )}
 
-      {/* Header */}
-      <EditorHeader
-        hasChanges={hasChanges}
-        viewMode={viewMode}
-        onToggleViewMode={toggleViewMode}
-        onRefresh={loadXmlContent}
-        onSave={saveToXml}
-      />
-
       {/* Error display */}
       <ErrorDisplay error={error} />
 
       {/* Main editor area with document-like styling */}
       <div className='flex-1 overflow-auto bg-gray-100 p-8'>
         <div className='max-w-4xl mx-auto bg-white rounded-lg min-h-full'>
-          {viewMode === 'wysiwyg' ? (
-            <WysiwygEditor
-              editorRef={editorRef}
-              onInput={handleInput}
-              onKeyDown={handleKeyDown}
-              onMouseUp={updateActiveFormats}
-              onKeyUp={updateActiveFormats}
-              isEditable={activeTab === 'pdf'}
-            />
-          ) : (
-            <XmlViewer xmlContent={xmlContent} />
-          )}
+          <WysiwygEditor
+            editorRef={editorRef}
+            onInput={handleInput}
+            onKeyDown={handleKeyDown}
+            onMouseUp={updateActiveFormats}
+            onKeyUp={updateActiveFormats}
+            isEditable={activeTab === 'pdf'}
+          />
         </div>
       </div>
 
@@ -84,9 +64,6 @@ export const XmlWysiwygEditor: React.FC = () => {
           ) : undefined
         }
       />
-
-      {/* Enhanced document-style CSS */}
-      <EditorStyles />
     </div>
   );
 };
