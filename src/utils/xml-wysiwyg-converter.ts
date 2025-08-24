@@ -9,7 +9,7 @@ export interface SchemaInfo {
   [tagName: string]: {
     type?: 'enum' | 'string' | 'number' | 'date';
     enumValues?: string[];
-    enumDocumentation?: { [value: string]: string };
+    enumDocumentation?: { [value: string]: string }; // Added for enum documentation
     defaultValue?: string;
   };
 }
@@ -25,14 +25,7 @@ export class XmlWysiwygConverter {
     pageNumber: 1,
   };
 
-  // Optimization properties
   private static updateCallback: ((xmlContent: string) => void) | null = null;
-  private static updateDebounceTimer: NodeJS.Timeout | null = null;
-  private static parsedXsdCache = new Map<string, any>();
-  private static enumCache = new Map<
-    string,
-    { values: string[]; documentation: { [value: string]: string } }
-  >();
 
   /**
    * Set a callback to be called when XML changes
@@ -42,41 +35,21 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Clear the callback
-   */
-  static clearCallback(): void {
-    this.updateCallback = null;
-    // Clear caches when callback is cleared
-    this.parsedXsdCache.clear();
-    this.enumCache.clear();
-  }
-
-  /**
-   * Trigger XML update with debouncing
+   * Trigger XML update
    */
   private static triggerXmlUpdate(): void {
     if (!this.updateCallback) return;
 
-    // Clear existing timer
-    if (this.updateDebounceTimer) {
-      clearTimeout(this.updateDebounceTimer);
+    try {
+      const wysiwygDoc = document.querySelector('.wysiwyg-document');
+      if (wysiwygDoc) {
+        const xml = this.buildXmlFromDocument(wysiwygDoc);
+        const formatted = this.formatXml(xml);
+        this.updateCallback(formatted);
+      }
+    } catch (error) {
+      console.error('Error updating XML:', error);
     }
-
-    // Debounce updates
-    this.updateDebounceTimer = setTimeout(() => {
-      requestAnimationFrame(() => {
-        try {
-          const wysiwygDoc = document.querySelector('.wysiwyg-document');
-          if (wysiwygDoc) {
-            const xml = this.buildXmlFromDocument(wysiwygDoc);
-            const formatted = this.formatXml(xml);
-            this.updateCallback!(formatted);
-          }
-        } catch (error) {
-          console.error('Error updating XML:', error);
-        }
-      });
-    }, 300);
   }
 
   /**
@@ -86,9 +59,6 @@ export class XmlWysiwygConverter {
     this.schemaInfo = schema;
     if (xsdContent) {
       this.xsdContent = xsdContent;
-      // Clear cache when new XSD is set
-      this.parsedXsdCache.clear();
-      this.enumCache.clear();
       // Parse and store enum documentation from XSD
       this.enrichSchemaWithDocumentation();
     }
@@ -97,725 +67,10 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Render WYSIWYG header with PDF styling
-   */
-  private static renderHeader(
-    rootElement: Element | null,
-    isEditable: boolean
-  ): string {
-    if (!rootElement) return '';
-
-    const title = this.formatTagName(rootElement.tagName);
-    let html = `<div class="wysiwyg-header">`;
-
-    if (isEditable) {
-      html += `<input type="text" class="wysiwyg-title-input" value="${title}" 
-               data-xml-tag="${rootElement.tagName}" placeholder="Document Title" />`;
-    } else {
-      html += `<h1>${title}</h1>`;
-    }
-
-    // Add metadata for attributes
-    if (rootElement.attributes.length > 0) {
-      html += '<div class="wysiwyg-metadata">';
-      for (let i = 0; i < rootElement.attributes.length; i++) {
-        const attr = rootElement.attributes[i];
-        if (i > 0) html += '<span> | </span>';
-        html += `<span>${this.formatTagName(attr.name)}: ${attr.value}</span>`;
-      }
-      html += '</div>';
-    }
-
-    html += '</div>';
-    return html;
-  }
-
-  /**
-   * Render WYSIWYG footer
-   */
-  private static renderFooter(): string {
-    return `
-      <div class="wysiwyg-footer">
-        <span>Page ${this.documentMetadata.pageNumber}</span>
-        <span>${this.documentMetadata.date}</span>
-      </div>
-    `;
-  }
-
-  /**
-   * Optimized XML to WYSIWYG conversion with async processing
-   */
-  static async xmlToWysiwygAsync(
-    xmlContent: string,
-    isEditable: boolean = true
-  ): Promise<string> {
-    return new Promise((resolve) => {
-      const processXml = () => {
-        try {
-          const unescapedXml = this.unescapeHTML(xmlContent);
-          const parser = new DOMParser();
-          const xmlDoc = parser.parseFromString(
-            unescapedXml,
-            'application/xml'
-          );
-
-          const parseError = xmlDoc.querySelector('parsererror');
-          if (parseError) {
-            resolve(
-              `<div class="wysiwyg-error">XML Parsing Error: ${parseError.textContent}</div>`
-            );
-            return;
-          }
-
-          if (xmlDoc.documentElement) {
-            this.documentMetadata.title = this.formatTagName(
-              xmlDoc.documentElement.tagName
-            );
-          }
-
-          let html = `
-            <div class="wysiwyg-document">
-              <style>
-                ${this.getOptimizedWysiwygStyles()}
-              </style>
-              <div class="wysiwyg-page">
-                ${this.renderHeader(xmlDoc.documentElement, isEditable)}
-                <div class="wysiwyg-content">
-          `;
-
-          if (xmlDoc.documentElement) {
-            html += this.processNodeOptimized(
-              xmlDoc.documentElement,
-              0,
-              isEditable
-            );
-          }
-
-          html += `
-                </div>
-                ${this.renderFooter()}
-              </div>
-            </div>
-          `;
-
-          requestAnimationFrame(() => {
-            this.initializeEventHandlers();
-          });
-
-          resolve(html);
-        } catch (error) {
-          resolve(
-            `<div class="wysiwyg-error">Error converting XML: ${
-              error instanceof Error ? error.message : 'Unknown error'
-            }</div>`
-          );
-        }
-      };
-
-      if ('requestIdleCallback' in window) {
-        window.requestIdleCallback(processXml);
-      } else {
-        setTimeout(processXml, 0);
-      }
-    });
-  }
-
-  /**
-   * Standard synchronous XML to WYSIWYG conversion (fallback)
-   */
-  static xmlToWysiwyg(xmlContent: string, isEditable: boolean = true): string {
-    try {
-      const unescapedXml = this.unescapeHTML(xmlContent);
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(unescapedXml, 'application/xml');
-
-      const parseError = xmlDoc.querySelector('parsererror');
-      if (parseError) {
-        return `<div class="wysiwyg-error">XML Parsing Error: ${parseError.textContent}</div>`;
-      }
-
-      if (xmlDoc.documentElement) {
-        this.documentMetadata.title = this.formatTagName(
-          xmlDoc.documentElement.tagName
-        );
-      }
-
-      let html = `
-        <div class="wysiwyg-document">
-          <style>
-            ${this.getOptimizedWysiwygStyles()}
-          </style>
-          <div class="wysiwyg-page">
-            ${this.renderHeader(xmlDoc.documentElement, isEditable)}
-            <div class="wysiwyg-content">
-      `;
-
-      if (xmlDoc.documentElement) {
-        html += this.processNode(xmlDoc.documentElement, 0, isEditable);
-      }
-
-      html += `
-            </div>
-            ${this.renderFooter()}
-          </div>
-        </div>
-      `;
-
-      setTimeout(() => this.initializeEventHandlers(), 100);
-
-      return html;
-    } catch (error) {
-      return `<div class="wysiwyg-error">Error converting XML: ${
-        error instanceof Error ? error.message : 'Unknown error'
-      }</div>`;
-    }
-  }
-
-  /**
-   * Optimized node processing with early returns
-   */
-  private static processNodeOptimized(
-    node: Element,
-    level: number = 0,
-    isEditable: boolean = true
-  ): string {
-    if (node.nodeType !== Node.ELEMENT_NODE) return '';
-
-    let result = '';
-    const childCount = node.children.length;
-
-    // Early return for text nodes
-    if (childCount === 0 && node.textContent?.trim()) {
-      return this.renderField(node, isEditable);
-    }
-
-    // Check if collection (all children have same tag)
-    if (childCount > 0) {
-      const firstChildTag = node.children[0]?.tagName;
-      const isCollection =
-        firstChildTag &&
-        Array.from(node.children).every(
-          (child) => child.tagName === firstChildTag
-        );
-
-      if (level === 0) {
-        // Process root children
-        for (let i = 0; i < childCount; i++) {
-          result += this.processNodeOptimized(
-            node.children[i] as Element,
-            level + 1,
-            isEditable
-          );
-        }
-      } else if (isCollection && level <= 2) {
-        result += this.renderTableOptimized(node, level, isEditable);
-      } else if (!isCollection && level === 1) {
-        // Section
-        result += `<h2 class="wysiwyg-section" data-xml-tag="${
-          node.tagName
-        }">${this.formatTagName(node.tagName)}</h2>`;
-
-        if (node.attributes.length > 0) {
-          result += this.renderAttributes(node, isEditable);
-        }
-
-        for (let i = 0; i < childCount; i++) {
-          result += this.processNodeOptimized(
-            node.children[i] as Element,
-            level + 1,
-            isEditable
-          );
-        }
-      } else if (!isCollection && level === 2) {
-        // Subsection
-        result += `<h3 class="wysiwyg-subsection" data-xml-tag="${
-          node.tagName
-        }">${this.formatTagName(node.tagName)}</h3>`;
-
-        for (let i = 0; i < childCount; i++) {
-          result += this.processNodeOptimized(
-            node.children[i] as Element,
-            level + 1,
-            isEditable
-          );
-        }
-      } else if (!isCollection) {
-        // Container
-        for (let i = 0; i < childCount; i++) {
-          result += this.processNodeOptimized(
-            node.children[i] as Element,
-            level + 1,
-            isEditable
-          );
-        }
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Check if a field has enumeration values
-   */
-  private static hasEnumeration(tagName: string): boolean {
-    const schemaInfo = this.schemaInfo[tagName];
-    return (
-      schemaInfo?.type === 'enum' &&
-      Array.isArray(schemaInfo.enumValues) &&
-      schemaInfo.enumValues.length > 0
-    );
-  }
-
-  /**
-   * Render a field with label and value (PDF style)
-   */
-  private static renderField(node: Element, isEditable: boolean): string {
-    const tagName = node.tagName;
-    const text = node.textContent?.trim() || '';
-    const formattedLabel = this.formatTagName(tagName);
-    const contentType = this.getContentType(text);
-    const additionalInfo = this.parseAdditionalSchemaInfo(tagName);
-
-    let html = `<div class="wysiwyg-field-group">`;
-    html += `<span class="wysiwyg-field-label">${formattedLabel}:</span>`;
-
-    if (isEditable) {
-      // Always show display span by default for editable fields
-      let displayValue = text || 'N/A';
-
-      // Format display value based on content type
-      if (contentType === 'email') {
-        displayValue = text;
-      } else if (contentType === 'url') {
-        displayValue = text;
-      } else if (contentType === 'date' && text) {
-        displayValue = this.formatDate(text);
-      } else if (contentType === 'currency') {
-        displayValue = text;
-      }
-
-      // Special handling for enum fields
-      if (this.hasEnumeration(tagName)) {
-        displayValue = text || 'Not specified';
-      }
-
-      html += `<span class="wysiwyg-field-display" style="display: inline-block;">${displayValue}</span>`;
-
-      if (this.hasEnumeration(tagName)) {
-        // Create searchable trigger button (hidden by default)
-        const triggerId = `searchable-${tagName}-${Date.now()}`;
-        html += `<button type="button" 
-                  id="${triggerId}"
-                  class="wysiwyg-searchable-trigger" 
-                  data-xml-tag="${tagName}" 
-                  data-current-value="${text}"
-                  style="display: none;">
-                  ${text || 'Not specified'}
-                </button>`;
-      } else {
-        let validationAttrs = '';
-        if (additionalInfo.minLength)
-          validationAttrs += ` minlength="${additionalInfo.minLength}"`;
-        if (additionalInfo.maxLength)
-          validationAttrs += ` maxlength="${additionalInfo.maxLength}"`;
-        if (additionalInfo.pattern)
-          validationAttrs += ` pattern="${additionalInfo.pattern}"`;
-
-        // Add input (hidden by default)
-        if (text.length > 100 || contentType === 'paragraph') {
-          html += `<textarea class="wysiwyg-textarea-input" 
-                    data-xml-tag="${tagName}" 
-                    data-content="${text}"
-                    placeholder="Enter ${formattedLabel.toLowerCase()}"
-                    rows="4"
-                    style="display: none;"${validationAttrs}>${text}</textarea>`;
-        } else {
-          const inputType = this.getInputType(text);
-          html += `<input type="${inputType}" 
-                    class="wysiwyg-text-input" 
-                    data-xml-tag="${tagName}" 
-                    data-content="${text}"
-                    value="${text}" 
-                    placeholder="Enter ${formattedLabel.toLowerCase()}"
-                    style="display: none;"${validationAttrs} />`;
-        }
-      }
-
-      // Add edit/save/cancel buttons with icons
-      html += `<div class="wysiwyg-field-buttons">`;
-      html += `<button class="wysiwyg-edit-field-button" type="button" title="Edit">✏️</button>`;
-      html += `<button class="wysiwyg-save-field-button" style="display: none;" type="button" title="Save">💾</button>`;
-      html += `<button class="wysiwyg-cancel-field-button" style="display: none;" type="button" title="Cancel">❌</button>`;
-      html += `</div>`;
-    } else {
-      // Non-editable mode - format based on content type
-      let valueHtml = '';
-      switch (contentType) {
-        case 'email':
-          valueHtml = `<a href="mailto:${text}" class="wysiwyg-link">${text}</a>`;
-          break;
-        case 'url':
-          valueHtml = `<a href="${text}" target="_blank" class="wysiwyg-link">${text}</a>`;
-          break;
-        case 'date':
-          valueHtml = `<span class="wysiwyg-date">${this.formatDate(
-            text
-          )}</span>`;
-          break;
-        case 'currency':
-          valueHtml = `<span class="wysiwyg-currency">${text}</span>`;
-          break;
-        case 'paragraph':
-          html += `</div><div class="wysiwyg-text-block">${text}`;
-          valueHtml = '';
-          break;
-        default:
-          valueHtml = `<span class="wysiwyg-field-value">${
-            text || 'N/A'
-          }</span>`;
-      }
-      if (valueHtml) {
-        html += valueHtml;
-      }
-    }
-
-    html += '</div>';
-    return html;
-  }
-
-  /**
-   * Render attributes as metadata
-   */
-  private static renderAttributes(node: Element, isEditable: boolean): string {
-    if (node.attributes.length === 0) return '';
-
-    let html = '<div class="wysiwyg-metadata-block">';
-    for (let i = 0; i < node.attributes.length; i++) {
-      const attr = node.attributes[i];
-      html += `
-        <div class="wysiwyg-metadata-item">
-          <span class="wysiwyg-metadata-label">${this.formatTagName(
-            attr.name
-          )}:</span>`;
-
-      if (isEditable) {
-        html += `<input type="text" class="wysiwyg-text-input" 
-                  data-attr-name="${attr.name}" 
-                  value="${attr.value}" 
-                  style="flex: 1; font-size: 9pt;" />`;
-      } else {
-        html += `<span class="wysiwyg-metadata-value">${attr.value}</span>`;
-      }
-
-      html += '</div>';
-    }
-    html += '</div>';
-    return html;
-  }
-
-  /**
-   * Standard node processing (non-optimized fallback)
-   */
-  private static processNode(
-    node: Element,
-    level: number = 0,
-    isEditable: boolean = true
-  ): string {
-    let result = '';
-
-    if (node.nodeType === Node.ELEMENT_NODE) {
-      const hasTextContent =
-        node.textContent &&
-        node.textContent.trim() &&
-        node.children.length === 0;
-      const hasChildElements = node.children.length > 0;
-
-      const isCollection =
-        hasChildElements &&
-        Array.from(node.children).every(
-          (child) =>
-            child.nodeType === Node.ELEMENT_NODE &&
-            child.tagName === node.children[0].tagName
-        );
-
-      if (level === 0 && hasChildElements) {
-        Array.from(node.children).forEach((child) => {
-          result += this.processNode(child as Element, level + 1, isEditable);
-        });
-        return result;
-      }
-
-      if (isCollection && level <= 2) {
-        result += this.renderTableOptimized(node, level, isEditable);
-      } else if (hasChildElements && !isCollection && level === 1) {
-        result += `<h2 class="wysiwyg-section" data-xml-tag="${
-          node.tagName
-        }">${this.formatTagName(node.tagName)}</h2>`;
-
-        if (node.attributes.length > 0) {
-          result += this.renderAttributes(node, isEditable);
-        }
-
-        Array.from(node.children).forEach((child) => {
-          result += this.processNode(child as Element, level + 1, isEditable);
-        });
-      } else if (hasChildElements && !isCollection && level === 2) {
-        result += `<h3 class="wysiwyg-subsection" data-xml-tag="${
-          node.tagName
-        }">${this.formatTagName(node.tagName)}</h3>`;
-
-        Array.from(node.children).forEach((child) => {
-          result += this.processNode(child as Element, level + 1, isEditable);
-        });
-      } else if (hasTextContent) {
-        result += this.renderField(node, isEditable);
-      } else if (hasChildElements && !isCollection) {
-        Array.from(node.children).forEach((child) => {
-          result += this.processNode(child as Element, level + 1, isEditable);
-        });
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Optimized table rendering with virtual scrolling
-   */
-  private static renderTableOptimized(
-    node: Element,
-    _level: number,
-    isEditable: boolean
-  ): string {
-    const childTagName = node.children[0]?.tagName;
-    if (!childTagName) return '';
-
-    const rowCount = node.children.length;
-    const headers = Array.from(node.children[0].children).map(
-      (child) => child.tagName
-    );
-
-    // Use virtual scrolling for large tables
-    const useVirtualScroll = rowCount > 100;
-    const initialRows = useVirtualScroll ? 50 : rowCount;
-
-    let html = `<div class="wysiwyg-table-container" 
-                     data-collection-tag="${node.tagName}" 
-                     data-item-tag="${childTagName}"
-                     ${useVirtualScroll ? 'data-virtual-scroll="true"' : ''}>`;
-
-    html += `<h3 class="wysiwyg-subsection" data-xml-tag="${
-      node.tagName
-    }">${this.formatTagName(node.tagName)}</h3>`;
-
-    if (isEditable) {
-      html += `<button class="wysiwyg-add-button" type="button">Add ${this.formatTagName(
-        childTagName
-      )}</button>`;
-    }
-
-    html += '<div class="wysiwyg-table-wrapper">';
-    html += '<table class="wysiwyg-table">';
-
-    // Header
-    html += '<thead><tr>';
-    headers.forEach((header) => {
-      html += `<th>${this.formatTagName(header)}</th>`;
-    });
-    if (isEditable) {
-      html += '<th class="wysiwyg-table-actions">Actions</th>';
-    }
-    html += '</tr></thead>';
-
-    // Body - render only initial rows for performance
-    html += '<tbody>';
-    for (
-      let rowIndex = 0;
-      rowIndex < Math.min(initialRows, rowCount);
-      rowIndex++
-    ) {
-      html += this.renderTableRow(
-        node.children[rowIndex],
-        rowIndex,
-        isEditable
-      );
-    }
-    html += '</tbody>';
-    html += '</table>';
-
-    if (useVirtualScroll) {
-      // Store remaining data for load more functionality
-      html += `<div class="wysiwyg-load-more" 
-                    data-start-index="${initialRows}" 
-                    data-total-rows="${rowCount}">
-                 <button type="button">
-                   Load More (${rowCount - initialRows} remaining)
-                 </button>
-               </div>`;
-    }
-
-    html += '</div></div>';
-
-    return html;
-  }
-
-  /**
-   * Render a single table row
-   */
-  private static renderTableRow(
-    child: Element,
-    rowIndex: number,
-    isEditable: boolean
-  ): string {
-    let html = '<tr>';
-
-    Array.from(child.children).forEach((grandchild, colIndex) => {
-      const text = grandchild.textContent?.trim() || '';
-      const tagName = grandchild.tagName;
-
-      html += `<td data-xml-tag="${tagName}">`;
-      html += `<span class="wysiwyg-cell-display">${text || 'N/A'}</span>`;
-
-      if (isEditable) {
-        if (this.hasEnumeration(tagName)) {
-          const triggerId = `searchable-${tagName}-${rowIndex}-${colIndex}`;
-          html += `<button type="button" 
-                    id="${triggerId}"
-                    class="wysiwyg-searchable-trigger" 
-                    data-xml-tag="${tagName}" 
-                    data-current-value="${text}"
-                    style="display: none;">
-                    ${text || 'Not specified'}
-                  </button>`;
-        } else {
-          const inputType = this.getInputType(text);
-          html += `<input type="${inputType}" 
-                    class="wysiwyg-text-input" 
-                    data-xml-tag="${tagName}" 
-                    value="${text}" 
-                    placeholder="${this.formatTagName(tagName)}" 
-                    style="display: none;"
-                    disabled />`;
-        }
-      }
-
-      html += '</td>';
-    });
-
-    if (isEditable) {
-      html += '<td class="wysiwyg-table-actions">';
-      html += `<button class="wysiwyg-edit-row-button" type="button" title="Edit">✏️</button>`;
-      html += `<button class="wysiwyg-save-row-button" style="display: none;" type="button" title="Save">💾</button>`;
-      html += `<button class="wysiwyg-cancel-row-button" style="display: none;" type="button" title="Cancel">❌</button>`;
-      html += `<button class="wysiwyg-delete-button" type="button" title="Delete">🗑️</button>`;
-      html += '</td>';
-    }
-
-    html += '</tr>';
-    return html;
-  }
-
-  /**
-   * Get appropriate HTML input type based on content
-   */
-  private static getInputType(text: string): string {
-    if (this.isEmail(text)) return 'email';
-    if (this.isUrl(text)) return 'url';
-    if (this.isPhone(text)) return 'tel';
-    if (this.isDate(text)) return 'date';
-    if (this.isTime(text)) return 'time';
-    if (this.isNumber(text)) return 'number';
-    return 'text';
-  }
-
-  /**
-   * Get content type classification
-   */
-  private static getContentType(text: string): string {
-    if (this.isEmail(text)) return 'email';
-    if (this.isUrl(text)) return 'url';
-    if (this.isPhone(text)) return 'phone';
-    if (this.isDate(text)) return 'date';
-    if (this.isTime(text)) return 'time';
-    if (this.isCurrency(text)) return 'currency';
-    if (this.isNumber(text)) return 'number';
-    if (text.length > 100) return 'paragraph';
-    return 'text';
-  }
-
-  /**
-   * Parse XSD content directly (if needed for additional schema information)
-   */
-  private static parseAdditionalSchemaInfo(tagName: string): {
-    hasDocumentation?: boolean;
-    pattern?: string;
-    minLength?: number;
-    maxLength?: number;
-    documentation?: string;
-  } {
-    if (!this.xsdContent) return {};
-
-    try {
-      const parser = new DOMParser();
-      const xsdDoc = parser.parseFromString(this.xsdContent, 'application/xml');
-
-      const elements = xsdDoc.querySelectorAll('xs\\:element, element');
-      for (const element of elements) {
-        const elementName = element.getAttribute('name');
-        if (elementName === tagName) {
-          const result: any = {};
-
-          const documentation = element.querySelector(
-            'xs\\:annotation xs\\:documentation, annotation documentation'
-          );
-          if (documentation) {
-            result.hasDocumentation = true;
-            result.documentation = documentation.textContent?.trim();
-          }
-
-          const restriction =
-            element.querySelector(
-              'xs\\:simpleType xs\\:restriction, simpleType restriction'
-            ) || element.querySelector('xs\\:restriction, restriction');
-          if (restriction) {
-            const pattern = restriction.querySelector('xs\\:pattern, pattern');
-            if (pattern) {
-              result.pattern = pattern.getAttribute('value');
-            }
-
-            const minLength = restriction.querySelector(
-              'xs\\:minLength, minLength'
-            );
-            if (minLength) {
-              result.minLength = parseInt(
-                minLength.getAttribute('value') || '0'
-              );
-            }
-
-            const maxLength = restriction.querySelector(
-              'xs\\:maxLength, maxLength'
-            );
-            if (maxLength) {
-              result.maxLength = parseInt(
-                maxLength.getAttribute('value') || '0'
-              );
-            }
-          }
-
-          return result;
-        }
-      }
-    } catch (error) {
-      console.warn('Error parsing additional schema info:', error);
-    }
-
-    return {};
-  }
-
-  /**
    * Enrich schema info with documentation extracted from XSD
    */
   private static enrichSchemaWithDocumentation(): void {
+    // Enrich each field with its enum data
     Object.keys(this.schemaInfo).forEach((tagName) => {
       if (this.schemaInfo[tagName].type === 'enum') {
         const enumData = this.parseEnumerationWithDocumentation(tagName);
@@ -828,17 +83,12 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Optimized enumeration parsing with caching
+   * Parse enumeration values with their documentation from XSD (supports both annotations and comments)
    */
   private static parseEnumerationWithDocumentation(tagName: string): {
     values: string[];
     documentation: { [value: string]: string };
   } {
-    // Check cache first
-    if (this.enumCache.has(tagName)) {
-      return this.enumCache.get(tagName)!;
-    }
-
     const result = {
       values: [] as string[],
       documentation: {} as { [value: string]: string },
@@ -846,25 +96,23 @@ export class XmlWysiwygConverter {
 
     if (!this.xsdContent) return result;
 
-    try {
-      // Parse XSD only once and cache it
-      let xsdDoc = this.parsedXsdCache.get(this.xsdContent);
-      if (!xsdDoc) {
-        const parser = new DOMParser();
-        xsdDoc = parser.parseFromString(this.xsdContent, 'application/xml');
-        this.parsedXsdCache.set(this.xsdContent, xsdDoc);
-      }
+    console.log(`Parsing enumeration for: ${tagName}`);
 
-      // Collect all simpleType definitions
+    try {
+      const parser = new DOMParser();
+      const xsdDoc = parser.parseFromString(this.xsdContent, 'application/xml');
+
+      // First, collect all simpleType definitions
       const typeDefinitions = new Map<
         string,
         { values: string[]; documentation: { [value: string]: string } }
       >();
 
+      // Process simpleTypes
       const simpleTypes = xsdDoc.querySelectorAll(
         'xs\\:simpleType, simpleType'
       );
-      simpleTypes.forEach((simpleType: Element) => {
+      simpleTypes.forEach((simpleType) => {
         const typeName = simpleType.getAttribute('name');
         if (!typeName) return;
 
@@ -873,6 +121,7 @@ export class XmlWysiwygConverter {
           documentation: {} as { [value: string]: string },
         };
 
+        // Look for enumerations
         const restriction = simpleType.querySelector(
           'xs\\:restriction, restriction'
         );
@@ -886,7 +135,7 @@ export class XmlWysiwygConverter {
             if (value) {
               typeData.values.push(value);
 
-              // Try annotation first
+              // First try to get annotation/documentation
               const annotation = enumNode.querySelector(
                 'xs\\:annotation, annotation'
               );
@@ -900,7 +149,7 @@ export class XmlWysiwygConverter {
                 }
               }
 
-              // If no annotation, try extracting from comments
+              // If no annotation found, extract from raw XSD using regex for this specific value
               if (!typeData.documentation[value]) {
                 const comment = this.extractCommentForEnumValue(
                   value,
@@ -916,6 +165,7 @@ export class XmlWysiwygConverter {
 
         if (typeData.values.length > 0) {
           typeDefinitions.set(typeName, typeData);
+          console.log(`Type ${typeName} has enums:`, typeData);
         }
       });
 
@@ -933,11 +183,13 @@ export class XmlWysiwygConverter {
               ? elementType.split(':')[1]
               : elementType;
 
+            console.log(`Element ${tagName} uses type: ${cleanType}`);
+
             const typeData = typeDefinitions.get(cleanType);
             if (typeData) {
               result.values = typeData.values;
               result.documentation = typeData.documentation;
-              this.enumCache.set(tagName, result);
+              console.log(`Found enumeration data:`, result);
               return result;
             }
           }
@@ -955,11 +207,12 @@ export class XmlWysiwygConverter {
                 'xs\\:enumeration, enumeration'
               );
 
-              enumerations.forEach((enumNode: any) => {
+              enumerations.forEach((enumNode) => {
                 const value = enumNode.getAttribute('value');
                 if (value) {
                   result.values.push(value);
 
+                  // Extract comment for this value
                   const comment = this.extractCommentForEnumValue(
                     value,
                     this.xsdContent
@@ -973,7 +226,7 @@ export class XmlWysiwygConverter {
           }
 
           if (result.values.length > 0) {
-            this.enumCache.set(tagName, result);
+            console.log(`Found inline enumeration:`, result);
             return result;
           }
         }
@@ -984,43 +237,61 @@ export class XmlWysiwygConverter {
       if (directTypeData) {
         result.values = directTypeData.values;
         result.documentation = directTypeData.documentation;
+        return result;
       }
-
-      // Cache the result
-      this.enumCache.set(tagName, result);
     } catch (error) {
       console.warn('Error parsing enumeration:', error);
     }
 
+    console.log(`Final result for ${tagName}:`, result);
     return result;
   }
 
   /**
-   * Extract comment for a specific enumeration value
+   * Extract comment for a specific enumeration value from raw XSD content
    */
   private static extractCommentForEnumValue(
     value: string,
     xsdContent: string
   ): string | null {
+    // Escape special regex characters in the value
     const escapedValue = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+    // Multiple patterns to try to match different comment positions
     const patterns = [
+      // Pattern 1: Comment inside enumeration element
+      // <xs:enumeration value="NGN"><!--Naira--></xs:enumeration>
       new RegExp(
         `<(?:xs:)?enumeration\\s+value="${escapedValue}"[^>]*>\\s*<!--\\s*([^-]+(?:-[^-]+)*)\\s*-->\\s*</(?:xs:)?enumeration>`,
         'si'
       ),
+
+      // Pattern 2: Comment on new line inside enumeration
+      // <xs:enumeration value="NGN">
+      //   <!--Naira-->
+      // </xs:enumeration>
       new RegExp(
         `<(?:xs:)?enumeration\\s+value="${escapedValue}"[^>]*>\\s*\\n?\\s*<!--\\s*([^-]+(?:-[^-]+)*)\\s*-->`,
         'si'
       ),
+
+      // Pattern 3: Comment right after opening tag on same line
+      // <xs:enumeration value="NGN"><!--Naira-->
       new RegExp(
         `<(?:xs:)?enumeration\\s+value="${escapedValue}"[^>]*><!--\\s*([^-]+(?:-[^-]+)*)\\s*-->`,
         'si'
       ),
+
+      // Pattern 4: Comment before enumeration
+      // <!--Naira-->
+      // <xs:enumeration value="NGN"/>
       new RegExp(
         `<!--\\s*([^-]+(?:-[^-]+)*)\\s*-->\\s*\\n?\\s*<(?:xs:)?enumeration\\s+value="${escapedValue}"`,
         'si'
       ),
+
+      // Pattern 5: Self-closing enumeration with comment after
+      // <xs:enumeration value="NGN"/> <!--Naira-->
       new RegExp(
         `<(?:xs:)?enumeration\\s+value="${escapedValue}"[^>]*/?>\\s*<!--\\s*([^-]+(?:-[^-]+)*)\\s*-->`,
         'si'
@@ -1030,22 +301,29 @@ export class XmlWysiwygConverter {
     for (const pattern of patterns) {
       const match = pattern.exec(xsdContent);
       if (match && match[1]) {
-        return match[1].trim();
+        const comment = match[1].trim();
+        console.log(`Found comment for ${value}: "${comment}"`);
+        return comment;
       }
     }
 
+    console.log(`No comment found for ${value}`);
     return null;
   }
 
   /**
-   * Initialize event handlers
+   * Initialize event handlers for add/delete/edit buttons
    */
   private static initializeEventHandlers(): void {
+    // Remove existing listener if it exists
     if (this.boundClickHandler) {
       document.removeEventListener('click', this.boundClickHandler);
     }
 
+    // Create bound function and store reference
     this.boundClickHandler = this.handleGlobalClick.bind(this);
+
+    // Add global click listener
     document.addEventListener('click', this.boundClickHandler);
   }
 
@@ -1055,7 +333,7 @@ export class XmlWysiwygConverter {
   private static handleGlobalClick(event: Event): void {
     const target = event.target as HTMLElement;
 
-    // Check for searchable option clicks
+    // For searchable options, check if we clicked on any child element
     const optionElement = target.closest('.wysiwyg-searchable-option');
     if (
       optionElement &&
@@ -1064,13 +342,6 @@ export class XmlWysiwygConverter {
       event.preventDefault();
       event.stopPropagation();
       this.selectSearchableOption(optionElement as HTMLElement);
-      return;
-    }
-
-    // Check for load more button in tables
-    if (target.closest('.wysiwyg-load-more button')) {
-      event.preventDefault();
-      this.handleLoadMoreRows(target);
       return;
     }
 
@@ -1105,6 +376,382 @@ export class XmlWysiwygConverter {
     } else if (target.classList.contains('wysiwyg-searchable-close')) {
       event.preventDefault();
       this.closeSearchableDropdown();
+    }
+  }
+
+  /**
+   * Open searchable dropdown modal with documentation support
+   */
+  private static openSearchableDropdown(trigger: HTMLElement): void {
+    // Prevent multiple modals
+    this.closeSearchableDropdown();
+
+    const fieldGroup = trigger.closest('.wysiwyg-field-group');
+    const cell = trigger.closest('td');
+    const container = fieldGroup || cell;
+    if (!container) return;
+
+    const tagName = trigger.getAttribute('data-xml-tag') || '';
+    const currentValue = trigger.getAttribute('data-current-value') || '';
+    const formattedTagName = this.formatTagName(tagName);
+
+    // Create modal overlay with empty options container
+    const modal = document.createElement('div');
+    modal.className = 'wysiwyg-searchable-modal';
+    modal.setAttribute('data-xml-tag', tagName);
+    modal.setAttribute('data-trigger-id', trigger.id || '');
+
+    // Store reference to trigger
+    (modal as any)._trigger = trigger;
+
+    // Create modal structure without options first
+    modal.innerHTML = `
+    <div class="wysiwyg-searchable-content" role="dialog" aria-modal="true">
+      <div class="wysiwyg-searchable-header">
+        <h3>Select ${formattedTagName}</h3>
+        <button class="wysiwyg-searchable-close" type="button" aria-label="Close">✕</button>
+      </div>
+      <div class="wysiwyg-searchable-search">
+        <input type="text" 
+               class="wysiwyg-searchable-input" 
+               placeholder="Search ${formattedTagName.toLowerCase()}..." 
+               aria-label="Search options" />
+      </div>
+      <div class="wysiwyg-searchable-options" role="listbox">
+        <div class="wysiwyg-loading">Loading options...</div>
+      </div>
+    </div>
+  `;
+
+    document.body.appendChild(modal);
+
+    // Now dynamically populate the options after modal is in DOM
+    requestAnimationFrame(() => {
+      this.populateDropdownOptions(modal, tagName, currentValue);
+    });
+  }
+
+  /**
+   * Populate dropdown options dynamically - NEW METHOD
+   */
+  private static populateDropdownOptions(
+    modal: Element,
+    tagName: string,
+    currentValue: string
+  ): void {
+    const optionsContainer = modal.querySelector('.wysiwyg-searchable-options');
+    if (!optionsContainer) return;
+
+    // Clear loading message
+    optionsContainer.innerHTML = '';
+
+    // Get fresh schema info for this specific tag
+    const schemaInfo = this.schemaInfo[tagName];
+    const enumValues = schemaInfo?.enumValues || [];
+    const enumDocs = schemaInfo?.enumDocumentation || {};
+
+    // Create and append "Not specified" option
+    const notSpecifiedOption = this.createDropdownOption(
+      '',
+      'Not specified',
+      '',
+      currentValue === ''
+    );
+    optionsContainer.appendChild(notSpecifiedOption);
+
+    // Create and append each enum value option
+    enumValues.forEach((value) => {
+      const documentation = enumDocs[value] || '';
+      const isSelected = value === currentValue;
+      const optionElement = this.createDropdownOption(
+        value,
+        value,
+        documentation,
+        isSelected
+      );
+      optionsContainer.appendChild(optionElement);
+    });
+
+    // Set up search functionality
+    const searchInput = modal.querySelector(
+      '.wysiwyg-searchable-input'
+    ) as HTMLInputElement;
+
+    if (searchInput) {
+      // Remove any existing listeners
+      const newSearchInput = searchInput.cloneNode(true) as HTMLInputElement;
+      searchInput.parentNode?.replaceChild(newSearchInput, searchInput);
+
+      newSearchInput.addEventListener('input', (e) => {
+        e.stopPropagation();
+        const searchTerm = newSearchInput.value.toLowerCase();
+        const options = optionsContainer.querySelectorAll(
+          '.wysiwyg-searchable-option'
+        );
+
+        options.forEach((option) => {
+          const valueText =
+            option
+              .querySelector('.wysiwyg-option-value')
+              ?.textContent?.toLowerCase() || '';
+          const docText =
+            option
+              .querySelector('.wysiwyg-option-doc')
+              ?.textContent?.toLowerCase() || '';
+          const fullText = valueText + ' ' + docText;
+
+          (option as HTMLElement).style.display = fullText.includes(searchTerm)
+            ? 'flex'
+            : 'none';
+        });
+      });
+
+      // Add keyboard navigation
+      newSearchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          const firstVisible = optionsContainer.querySelector(
+            '.wysiwyg-searchable-option:not([style*="none"])'
+          ) as HTMLElement;
+          if (firstVisible) firstVisible.focus();
+        }
+      });
+
+      // Focus search input
+      newSearchInput.focus();
+    }
+
+    // Attach event handlers to all options
+    this.attachOptionHandlers(optionsContainer, modal);
+
+    // Set up modal close handlers
+    this.setupModalCloseHandlers(modal);
+  }
+
+  /**
+   * Create a single dropdown option element - NEW METHOD
+   */
+  private static createDropdownOption(
+    value: string,
+    displayText: string,
+    documentation: string,
+    isSelected: boolean
+  ): HTMLElement {
+    const option = document.createElement('div');
+    option.className = `wysiwyg-searchable-option ${
+      isSelected ? 'selected' : ''
+    }`;
+    option.setAttribute('data-value', value);
+    option.setAttribute('role', 'option');
+    option.setAttribute('tabindex', '0');
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'wysiwyg-option-content';
+
+    // Format the display based on whether we have documentation
+    if (documentation && documentation.trim() !== '') {
+      // Show as "VALUE - Documentation"
+      const formattedText = `${displayText} - ${documentation}`;
+      const valueSpan = document.createElement('span');
+      valueSpan.className = 'wysiwyg-option-value';
+      valueSpan.textContent = formattedText;
+      contentDiv.appendChild(valueSpan);
+    } else {
+      // Just show the value
+      const valueSpan = document.createElement('span');
+      valueSpan.className = 'wysiwyg-option-value';
+      valueSpan.textContent = displayText;
+      contentDiv.appendChild(valueSpan);
+    }
+
+    option.appendChild(contentDiv);
+
+    if (isSelected) {
+      const checkmark = document.createElement('span');
+      checkmark.className = 'checkmark';
+      checkmark.textContent = '✓';
+      option.appendChild(checkmark);
+    }
+
+    return option;
+  }
+
+  /**
+   * Attach event handlers to options - NEW METHOD
+   */
+  private static attachOptionHandlers(
+    optionsContainer: Element,
+    modal: Element
+  ): void {
+    const options = optionsContainer.querySelectorAll(
+      '.wysiwyg-searchable-option'
+    );
+
+    options.forEach((option) => {
+      // Remove any existing handlers by cloning
+      const newOption = option.cloneNode(true) as HTMLElement;
+      option.parentNode?.replaceChild(newOption, option);
+
+      // Direct click handler
+      newOption.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.handleOptionSelection(newOption, modal);
+      });
+
+      // Keyboard support
+      newOption.addEventListener('keydown', (e) => {
+        const evt = e as KeyboardEvent;
+        if (evt.key === 'Enter' || evt.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          this.handleOptionSelection(newOption, modal);
+        } else if (evt.key === 'ArrowDown') {
+          e.preventDefault();
+          const next = newOption.nextElementSibling as HTMLElement;
+          if (
+            next &&
+            next.classList.contains('wysiwyg-searchable-option') &&
+            next.style.display !== 'none'
+          ) {
+            next.focus();
+          }
+        } else if (evt.key === 'ArrowUp') {
+          e.preventDefault();
+          const prev = newOption.previousElementSibling as HTMLElement;
+          if (
+            prev &&
+            prev.classList.contains('wysiwyg-searchable-option') &&
+            prev.style.display !== 'none'
+          ) {
+            prev.focus();
+          }
+        }
+      });
+    });
+  }
+
+  /**
+   * Setup modal close handlers - NEW METHOD
+   */
+  private static setupModalCloseHandlers(modal: Element): void {
+    // Close on background click
+    const bgClickHandler = (e: Event) => {
+      if (e.target === modal) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeSearchableDropdown();
+      }
+    };
+
+    // Remove old handler if exists
+    const oldBgHandler = (modal as any)._bgClickHandler;
+    if (oldBgHandler) {
+      modal.removeEventListener('click', oldBgHandler);
+    }
+
+    modal.addEventListener('click', bgClickHandler);
+    (modal as any)._bgClickHandler = bgClickHandler;
+
+    // Close on Escape key
+    const escapeHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        this.closeSearchableDropdown();
+      }
+    };
+
+    // Remove old handler if exists
+    const oldEscapeHandler = (modal as any)._escapeHandler;
+    if (oldEscapeHandler) {
+      document.removeEventListener('keydown', oldEscapeHandler);
+    }
+
+    document.addEventListener('keydown', escapeHandler);
+    (modal as any)._escapeHandler = escapeHandler;
+  }
+
+  /**
+   * Handle option selection - NEW METHOD
+   */
+  private static handleOptionSelection(
+    option: HTMLElement,
+    modal: Element
+  ): void {
+    const value = option.getAttribute('data-value') || '';
+    const trigger = (modal as any)._trigger as HTMLElement;
+
+    if (!trigger) {
+      console.error('No trigger found for modal');
+      return;
+    }
+
+    // Update trigger
+    const displayText = value || 'Not specified';
+    trigger.textContent = displayText;
+    trigger.setAttribute('data-current-value', value);
+
+    // Update display span if in edit mode
+    const fieldGroup = trigger.closest('.wysiwyg-field-group');
+    const cell = trigger.closest('td');
+    const container = fieldGroup || cell;
+
+    if (container) {
+      const displaySpan = container.querySelector(
+        '.wysiwyg-field-display, .wysiwyg-cell-display'
+      ) as HTMLElement;
+      if (displaySpan && displaySpan.style.display === 'none') {
+        // We're in edit mode, store the pending value
+        trigger.setAttribute('data-pending-value', value);
+      }
+    }
+
+    // Close modal
+    this.closeSearchableDropdown();
+  }
+
+  /**
+   * Handle Escape key to close modal
+   */
+  // private static handleEscapeKey = (e: KeyboardEvent): void => {
+  //   if (e.key === 'Escape') {
+  //     this.closeSearchableDropdown();
+  //   }
+  // };
+
+  /**
+   * Select option from searchable dropdown
+   */
+  private static selectSearchableOption(option: HTMLElement): void {
+    const modal = option.closest('.wysiwyg-searchable-modal');
+    if (!modal) return;
+
+    this.handleOptionSelection(option, modal);
+  }
+
+  /**
+   * Close searchable dropdown
+   */
+  private static closeSearchableDropdown(): void {
+    const modal = document.querySelector('.wysiwyg-searchable-modal');
+    if (modal) {
+      // Remove escape handler
+      const escapeHandler = (modal as any)._escapeHandler;
+      if (escapeHandler) {
+        document.removeEventListener('keydown', escapeHandler);
+      }
+
+      // Remove background click handler
+      const bgClickHandler = (modal as any)._bgClickHandler;
+      if (bgClickHandler) {
+        modal.removeEventListener('click', bgClickHandler);
+      }
+
+      // Clear any stored references
+      (modal as any)._trigger = null;
+      (modal as any)._escapeHandler = null;
+      (modal as any)._bgClickHandler = null;
+
+      modal.remove();
     }
   }
 
@@ -1161,6 +808,65 @@ export class XmlWysiwygConverter {
       if (saveButton) saveButton.style.display = 'inline-flex';
       if (cancelButton) cancelButton.style.display = 'inline-flex';
     }
+  }
+
+  /**
+   * Handle save field button click
+   */
+  private static handleSaveFieldButton(button: HTMLElement): void {
+    const fieldGroup = button.closest('.wysiwyg-field-group');
+    if (!fieldGroup) return;
+
+    const displaySpan = fieldGroup.querySelector(
+      '.wysiwyg-field-display'
+    ) as HTMLElement;
+    const input = fieldGroup.querySelector(
+      'input, textarea'
+    ) as HTMLInputElement;
+    const searchableTrigger = fieldGroup.querySelector(
+      '.wysiwyg-searchable-trigger'
+    ) as HTMLElement;
+
+    if (displaySpan) {
+      let newValue = '';
+
+      if (searchableTrigger) {
+        // Get value from trigger
+        newValue =
+          searchableTrigger.getAttribute('data-current-value') ||
+          searchableTrigger.getAttribute('data-pending-value') ||
+          '';
+
+        // Clear pending value
+        searchableTrigger.removeAttribute('data-pending-value');
+
+        // Hide trigger
+        searchableTrigger.style.display = 'none';
+
+        // Format for display
+        newValue = newValue || 'Not specified';
+      } else if (input) {
+        newValue = input.value || 'N/A';
+        input.setAttribute('data-content', newValue);
+        input.style.display = 'none';
+      }
+
+      displaySpan.textContent = newValue;
+      displaySpan.style.display = 'inline-block';
+
+      // Switch buttons
+      button.style.display = 'none';
+      const cancelButton = fieldGroup.querySelector(
+        '.wysiwyg-cancel-field-button'
+      ) as HTMLElement;
+      if (cancelButton) cancelButton.style.display = 'none';
+      const editButton = fieldGroup.querySelector(
+        '.wysiwyg-edit-field-button'
+      ) as HTMLElement;
+      if (editButton) editButton.style.display = 'inline-flex';
+    }
+
+    this.triggerXmlUpdate();
   }
 
   /**
@@ -1269,6 +975,69 @@ export class XmlWysiwygConverter {
       'input:not(.wysiwyg-searchable-trigger), textarea'
     ) as HTMLElement;
     if (firstInput) firstInput.focus();
+  }
+
+  /**
+   * Handle save row button click
+   */
+  private static handleSaveRowButton(button: HTMLElement): void {
+    const row = button.closest('tr');
+    if (!row) return;
+
+    // Save all cell values
+    row.querySelectorAll('td[data-xml-tag]').forEach((cell) => {
+      const displaySpan = cell.querySelector(
+        '.wysiwyg-cell-display'
+      ) as HTMLElement;
+      const input = cell.querySelector('input, textarea') as HTMLInputElement;
+      const searchableTrigger = cell.querySelector(
+        '.wysiwyg-searchable-trigger'
+      ) as HTMLElement;
+
+      if (displaySpan) {
+        let newValue = '';
+
+        if (searchableTrigger) {
+          // Get the current value from the trigger
+          newValue = searchableTrigger.getAttribute('data-current-value') || '';
+
+          // If no value, check for pending value
+          if (!newValue) {
+            newValue = displaySpan.getAttribute('data-pending-value') || '';
+          }
+
+          // Clear pending value
+          displaySpan.removeAttribute('data-pending-value');
+
+          newValue = newValue || 'N/A';
+          searchableTrigger.style.display = 'none';
+        } else if (input) {
+          newValue = input.value || 'N/A';
+          input.setAttribute('data-content', newValue);
+          input.style.display = 'none';
+          input.disabled = true;
+        }
+
+        displaySpan.textContent = newValue;
+        displaySpan.style.display = 'block';
+      }
+    });
+
+    // Remove editing class from row
+    row.classList.remove('editing');
+
+    // Switch buttons
+    button.style.display = 'none';
+    const cancelButton = button.parentElement?.querySelector(
+      '.wysiwyg-cancel-row-button'
+    ) as HTMLElement;
+    if (cancelButton) cancelButton.style.display = 'none';
+    const editButton = button.parentElement?.querySelector(
+      '.wysiwyg-edit-row-button'
+    ) as HTMLElement;
+    if (editButton) editButton.style.display = 'inline-flex';
+
+    this.triggerXmlUpdate();
   }
 
   /**
@@ -1451,621 +1220,16 @@ export class XmlWysiwygConverter {
   }
 
   /**
-   * Handle load more rows for virtual scrolling
-   */
-  private static handleLoadMoreRows(target: HTMLElement): void {
-    const loadMoreDiv = target.closest('.wysiwyg-load-more');
-    if (!loadMoreDiv) return;
-
-    const tableContainer = loadMoreDiv.closest('.wysiwyg-table-container');
-    if (!tableContainer) return;
-
-    // Implementation would load more rows from stored data
-    // This is a placeholder for the actual implementation
-    console.log('Load more rows functionality to be implemented');
-  }
-
-  /**
-   * Open searchable dropdown modal
-   */
-  private static openSearchableDropdown(trigger: HTMLElement): void {
-    this.closeSearchableDropdown();
-
-    const fieldGroup = trigger.closest('.wysiwyg-field-group');
-    const cell = trigger.closest('td');
-    const container = fieldGroup || cell;
-    if (!container) return;
-
-    const tagName = trigger.getAttribute('data-xml-tag') || '';
-    const currentValue = trigger.getAttribute('data-current-value') || '';
-    const formattedTagName = this.formatTagName(tagName);
-
-    const modal = document.createElement('div');
-    modal.className = 'wysiwyg-searchable-modal';
-    modal.setAttribute('data-xml-tag', tagName);
-    modal.setAttribute('data-trigger-id', trigger.id || '');
-    (modal as any)._trigger = trigger;
-
-    modal.innerHTML = `
-      <div class="wysiwyg-searchable-content" role="dialog" aria-modal="true">
-        <div class="wysiwyg-searchable-header">
-          <h3>Select ${formattedTagName}</h3>
-          <button class="wysiwyg-searchable-close" type="button" aria-label="Close">✕</button>
-        </div>
-        <div class="wysiwyg-searchable-search">
-          <input type="text" 
-                 class="wysiwyg-searchable-input" 
-                 placeholder="Search ${formattedTagName.toLowerCase()}..." 
-                 aria-label="Search options" />
-        </div>
-        <div class="wysiwyg-searchable-options" role="listbox">
-          <div class="wysiwyg-loading">Loading options...</div>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    requestAnimationFrame(() => {
-      this.populateDropdownOptions(modal, tagName, currentValue);
-    });
-  }
-
-  /**
-   * Populate dropdown options with virtual scrolling
-   */
-  private static populateDropdownOptions(
-    modal: Element,
-    tagName: string,
-    currentValue: string
-  ): void {
-    const optionsContainer: any = modal.querySelector(
-      '.wysiwyg-searchable-options'
-    );
-    if (!optionsContainer) return;
-
-    optionsContainer.innerHTML = '';
-
-    const schemaInfo = this.schemaInfo[tagName];
-    const enumValues = schemaInfo?.enumValues || [];
-    const enumDocs = schemaInfo?.enumDocumentation || {};
-
-    // Virtual scrolling for large lists
-    const useVirtualScroll = enumValues.length > 50;
-    const visibleOptions = useVirtualScroll ? 50 : enumValues.length;
-
-    if (useVirtualScroll) {
-      optionsContainer.setAttribute('data-virtual-scroll', 'true');
-      optionsContainer.style.maxHeight = '400px';
-      optionsContainer.style.overflowY = 'auto';
-    }
-
-    // Not specified option
-    const notSpecifiedOption = this.createDropdownOption(
-      '',
-      'Not specified',
-      '',
-      currentValue === ''
-    );
-    optionsContainer.appendChild(notSpecifiedOption);
-
-    // Create visible options using DocumentFragment
-    const fragment = document.createDocumentFragment();
-    for (let i = 0; i < Math.min(visibleOptions, enumValues.length); i++) {
-      const value = enumValues[i];
-      const documentation = enumDocs[value] || '';
-      const isSelected = value === currentValue;
-      const optionElement = this.createDropdownOption(
-        value,
-        value,
-        documentation,
-        isSelected
-      );
-      fragment.appendChild(optionElement);
-    }
-    optionsContainer.appendChild(fragment);
-
-    // Add load more button for virtual scrolling
-    if (useVirtualScroll && enumValues.length > visibleOptions) {
-      const loadMore = document.createElement('div');
-      loadMore.className = 'wysiwyg-load-more-options';
-      loadMore.innerHTML = `<button type="button">Load ${
-        enumValues.length - visibleOptions
-      } more options</button>`;
-      loadMore.addEventListener('click', () => {
-        this.loadMoreDropdownOptions(
-          optionsContainer,
-          enumValues,
-          enumDocs,
-          currentValue,
-          visibleOptions
-        );
-      });
-      optionsContainer.appendChild(loadMore);
-    }
-
-    // Set up search with debouncing
-    const searchInput = modal.querySelector(
-      '.wysiwyg-searchable-input'
-    ) as HTMLInputElement;
-    if (searchInput) {
-      let searchDebounce: NodeJS.Timeout;
-
-      const newSearchInput = searchInput.cloneNode(true) as HTMLInputElement;
-      searchInput.parentNode?.replaceChild(newSearchInput, searchInput);
-
-      newSearchInput.addEventListener('input', (e) => {
-        e.stopPropagation();
-        clearTimeout(searchDebounce);
-        searchDebounce = setTimeout(() => {
-          const searchTerm = newSearchInput.value.toLowerCase();
-          const options = optionsContainer.querySelectorAll(
-            '.wysiwyg-searchable-option'
-          );
-
-          requestAnimationFrame(() => {
-            options.forEach((option: any) => {
-              const text = (option.textContent || '').toLowerCase();
-              (option as HTMLElement).style.display = text.includes(searchTerm)
-                ? 'flex'
-                : 'none';
-            });
-          });
-        }, 150);
-      });
-
-      newSearchInput.addEventListener('keydown', (e) => {
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          const firstVisible = optionsContainer.querySelector(
-            '.wysiwyg-searchable-option:not([style*="none"])'
-          ) as HTMLElement;
-          if (firstVisible) firstVisible.focus();
-        }
-      });
-
-      requestAnimationFrame(() => newSearchInput.focus());
-    }
-
-    this.attachOptionHandlers(optionsContainer, modal);
-    this.setupModalCloseHandlers(modal);
-  }
-
-  /**
-   * Load more dropdown options
-   */
-  private static loadMoreDropdownOptions(
-    container: Element,
-    enumValues: string[],
-    enumDocs: { [key: string]: string },
-    currentValue: string,
-    startIndex: number
-  ): void {
-    const fragment = document.createDocumentFragment();
-    const endIndex = Math.min(startIndex + 50, enumValues.length);
-
-    for (let i = startIndex; i < endIndex; i++) {
-      const value = enumValues[i];
-      const documentation = enumDocs[value] || '';
-      const isSelected = value === currentValue;
-      const optionElement = this.createDropdownOption(
-        value,
-        value,
-        documentation,
-        isSelected
-      );
-      fragment.appendChild(optionElement);
-    }
-
-    const loadMoreBtn = container.querySelector('.wysiwyg-load-more-options');
-    if (loadMoreBtn) {
-      container.insertBefore(fragment, loadMoreBtn);
-
-      if (endIndex >= enumValues.length) {
-        loadMoreBtn.remove();
-      } else {
-        loadMoreBtn.innerHTML = `<button type="button">Load ${
-          enumValues.length - endIndex
-        } more options</button>`;
-        loadMoreBtn.addEventListener('click', () => {
-          this.loadMoreDropdownOptions(
-            container,
-            enumValues,
-            enumDocs,
-            currentValue,
-            endIndex
-          );
-        });
-      }
-    }
-
-    // Re-attach handlers to new options
-    this.attachOptionHandlers(
-      container,
-      container.closest('.wysiwyg-searchable-modal')!
-    );
-  }
-
-  /**
-   * Create dropdown option element
-   */
-  private static createDropdownOption(
-    value: string,
-    displayText: string,
-    documentation: string,
-    isSelected: boolean
-  ): HTMLElement {
-    const option = document.createElement('div');
-    option.className = `wysiwyg-searchable-option ${
-      isSelected ? 'selected' : ''
-    }`;
-    option.setAttribute('data-value', value);
-    option.setAttribute('role', 'option');
-    option.setAttribute('tabindex', '0');
-
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'wysiwyg-option-content';
-
-    if (documentation && documentation.trim() !== '') {
-      const formattedText = `${displayText} - ${documentation}`;
-      const valueSpan = document.createElement('span');
-      valueSpan.className = 'wysiwyg-option-value';
-      valueSpan.textContent = formattedText;
-      contentDiv.appendChild(valueSpan);
-    } else {
-      const valueSpan = document.createElement('span');
-      valueSpan.className = 'wysiwyg-option-value';
-      valueSpan.textContent = displayText;
-      contentDiv.appendChild(valueSpan);
-    }
-
-    option.appendChild(contentDiv);
-
-    if (isSelected) {
-      const checkmark = document.createElement('span');
-      checkmark.className = 'checkmark';
-      checkmark.textContent = '✓';
-      option.appendChild(checkmark);
-    }
-
-    return option;
-  }
-
-  /**
-   * Attach event handlers to options
-   */
-  private static attachOptionHandlers(
-    optionsContainer: Element,
-    modal: Element
-  ): void {
-    const options = optionsContainer.querySelectorAll(
-      '.wysiwyg-searchable-option'
-    );
-
-    options.forEach((option) => {
-      const newOption = option.cloneNode(true) as HTMLElement;
-      option.parentNode?.replaceChild(newOption, option);
-
-      newOption.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.handleOptionSelection(newOption, modal);
-      });
-
-      newOption.addEventListener('keydown', (e) => {
-        const evt = e as KeyboardEvent;
-        if (evt.key === 'Enter' || evt.key === ' ') {
-          e.preventDefault();
-          e.stopPropagation();
-          this.handleOptionSelection(newOption, modal);
-        } else if (evt.key === 'ArrowDown') {
-          e.preventDefault();
-          const next = newOption.nextElementSibling as HTMLElement;
-          if (
-            next &&
-            next.classList.contains('wysiwyg-searchable-option') &&
-            next.style.display !== 'none'
-          ) {
-            next.focus();
-          }
-        } else if (evt.key === 'ArrowUp') {
-          e.preventDefault();
-          const prev = newOption.previousElementSibling as HTMLElement;
-          if (
-            prev &&
-            prev.classList.contains('wysiwyg-searchable-option') &&
-            prev.style.display !== 'none'
-          ) {
-            prev.focus();
-          }
-        }
-      });
-    });
-  }
-
-  /**
-   * Setup modal close handlers
-   */
-  private static setupModalCloseHandlers(modal: Element): void {
-    const bgClickHandler = (e: Event) => {
-      if (e.target === modal) {
-        e.preventDefault();
-        e.stopPropagation();
-        this.closeSearchableDropdown();
-      }
-    };
-
-    const oldBgHandler = (modal as any)._bgClickHandler;
-    if (oldBgHandler) {
-      modal.removeEventListener('click', oldBgHandler);
-    }
-
-    modal.addEventListener('click', bgClickHandler);
-    (modal as any)._bgClickHandler = bgClickHandler;
-
-    const escapeHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        this.closeSearchableDropdown();
-      }
-    };
-
-    const oldEscapeHandler = (modal as any)._escapeHandler;
-    if (oldEscapeHandler) {
-      document.removeEventListener('keydown', oldEscapeHandler);
-    }
-
-    document.addEventListener('keydown', escapeHandler);
-    (modal as any)._escapeHandler = escapeHandler;
-  }
-
-  /**
-   * Handle option selection
-   */
-  private static handleOptionSelection(
-    option: HTMLElement,
-    modal: Element
-  ): void {
-    const value = option.getAttribute('data-value') || '';
-    const trigger = (modal as any)._trigger as HTMLElement;
-
-    if (!trigger) {
-      console.error('No trigger found for modal');
-      return;
-    }
-
-    const displayText = value || 'Not specified';
-    trigger.textContent = displayText;
-    trigger.setAttribute('data-current-value', value);
-
-    const fieldGroup = trigger.closest('.wysiwyg-field-group');
-    const cell = trigger.closest('td');
-    const container = fieldGroup || cell;
-
-    if (container) {
-      const displaySpan = container.querySelector(
-        '.wysiwyg-field-display, .wysiwyg-cell-display'
-      ) as HTMLElement;
-      if (displaySpan && displaySpan.style.display === 'none') {
-        trigger.setAttribute('data-pending-value', value);
-      }
-    }
-
-    this.closeSearchableDropdown();
-  }
-
-  /**
-   * Select searchable option
-   */
-  private static selectSearchableOption(option: HTMLElement): void {
-    const modal = option.closest('.wysiwyg-searchable-modal');
-    if (!modal) return;
-    this.handleOptionSelection(option, modal);
-  }
-
-  /**
-   * Close searchable dropdown
-   */
-  private static closeSearchableDropdown(): void {
-    const modal = document.querySelector('.wysiwyg-searchable-modal');
-    if (modal) {
-      const escapeHandler = (modal as any)._escapeHandler;
-      if (escapeHandler) {
-        document.removeEventListener('keydown', escapeHandler);
-      }
-
-      const bgClickHandler = (modal as any)._bgClickHandler;
-      if (bgClickHandler) {
-        modal.removeEventListener('click', bgClickHandler);
-      }
-
-      (modal as any)._trigger = null;
-      (modal as any)._escapeHandler = null;
-      (modal as any)._bgClickHandler = null;
-
-      modal.remove();
-    }
-  }
-
-  // [All the button handlers remain the same - handleEditFieldButton, handleSaveFieldButton, etc.]
-  // I'll include just the save handlers that trigger updates:
-
-  /**
-   * Handle save field button click
-   */
-  private static handleSaveFieldButton(button: HTMLElement): void {
-    const fieldGroup = button.closest('.wysiwyg-field-group');
-    if (!fieldGroup) return;
-
-    const displaySpan = fieldGroup.querySelector(
-      '.wysiwyg-field-display'
-    ) as HTMLElement;
-    const input = fieldGroup.querySelector(
-      'input, textarea'
-    ) as HTMLInputElement;
-    const searchableTrigger = fieldGroup.querySelector(
-      '.wysiwyg-searchable-trigger'
-    ) as HTMLElement;
-
-    if (displaySpan) {
-      let newValue = '';
-
-      if (searchableTrigger) {
-        newValue =
-          searchableTrigger.getAttribute('data-current-value') ||
-          searchableTrigger.getAttribute('data-pending-value') ||
-          '';
-        searchableTrigger.removeAttribute('data-pending-value');
-        searchableTrigger.style.display = 'none';
-        newValue = newValue || 'Not specified';
-      } else if (input) {
-        newValue = input.value || 'N/A';
-        input.setAttribute('data-content', newValue);
-        input.style.display = 'none';
-      }
-
-      displaySpan.textContent = newValue;
-      displaySpan.style.display = 'inline-block';
-
-      button.style.display = 'none';
-      const cancelButton = fieldGroup.querySelector(
-        '.wysiwyg-cancel-field-button'
-      ) as HTMLElement;
-      if (cancelButton) cancelButton.style.display = 'none';
-      const editButton = fieldGroup.querySelector(
-        '.wysiwyg-edit-field-button'
-      ) as HTMLElement;
-      if (editButton) editButton.style.display = 'inline-flex';
-    }
-
-    this.triggerXmlUpdate();
-  }
-
-  /**
-   * Handle save row button click
-   */
-  private static handleSaveRowButton(button: HTMLElement): void {
-    const row = button.closest('tr');
-    if (!row) return;
-
-    row.querySelectorAll('td[data-xml-tag]').forEach((cell) => {
-      const displaySpan = cell.querySelector(
-        '.wysiwyg-cell-display'
-      ) as HTMLElement;
-      const input = cell.querySelector('input, textarea') as HTMLInputElement;
-      const searchableTrigger = cell.querySelector(
-        '.wysiwyg-searchable-trigger'
-      ) as HTMLElement;
-
-      if (displaySpan) {
-        let newValue = '';
-
-        if (searchableTrigger) {
-          newValue = searchableTrigger.getAttribute('data-current-value') || '';
-          if (!newValue) {
-            newValue = displaySpan.getAttribute('data-pending-value') || '';
-          }
-          displaySpan.removeAttribute('data-pending-value');
-          newValue = newValue || 'N/A';
-          searchableTrigger.style.display = 'none';
-        } else if (input) {
-          newValue = input.value || 'N/A';
-          input.setAttribute('data-content', newValue);
-          input.style.display = 'none';
-          input.disabled = true;
-        }
-
-        displaySpan.textContent = newValue;
-        displaySpan.style.display = 'block';
-      }
-    });
-
-    row.classList.remove('editing');
-
-    button.style.display = 'none';
-    const cancelButton = button.parentElement?.querySelector(
-      '.wysiwyg-cancel-row-button'
-    ) as HTMLElement;
-    if (cancelButton) cancelButton.style.display = 'none';
-    const editButton = button.parentElement?.querySelector(
-      '.wysiwyg-edit-row-button'
-    ) as HTMLElement;
-    if (editButton) editButton.style.display = 'inline-flex';
-
-    this.triggerXmlUpdate();
-  }
-
-  /**
    * Handle delete button click
    */
   private static handleDeleteButton(button: HTMLElement): void {
     const row = button.closest('tr');
     if (row && confirm('Are you sure you want to delete this row?')) {
       row.remove();
-      this.triggerXmlUpdate();
     }
+
+    this.triggerXmlUpdate();
   }
-
-  // [Include all other handler methods - they remain the same as in your original code]
-  // handleEditFieldButton, handleCancelFieldButton, handleEditRowButton,
-  // handleCancelRowButton, handleAddButton, etc.
-
-  /**
-   * Get optimized WYSIWYG styles
-   */
-  private static getOptimizedWysiwygStyles(): string {
-    return `
-      ${this.getWysiwygStyles()}
-      
-      /* Performance optimizations */
-      .wysiwyg-table-container {
-        contain: layout style;
-      }
-      
-      .wysiwyg-searchable-modal {
-        contain: layout style paint;
-      }
-      
-      .wysiwyg-searchable-options {
-        contain: layout style;
-        will-change: scroll-position;
-      }
-      
-      /* Virtual scrolling styles */
-      .wysiwyg-load-more,
-      .wysiwyg-load-more-options {
-        text-align: center;
-        padding: 10px;
-      }
-      
-      .wysiwyg-load-more button,
-      .wysiwyg-load-more-options button {
-        padding: 8px 16px;
-        background: #f0f0f0;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 12px;
-      }
-      
-      .wysiwyg-load-more button:hover,
-      .wysiwyg-load-more-options button:hover {
-        background: #e0e0e0;
-      }
-      
-      .wysiwyg-loading {
-        padding: 20px;
-        text-align: center;
-        color: #666;
-        font-style: italic;
-      }
-    `;
-  }
-
-  // [Include all remaining methods from your original code]
-  // All the render methods, utility methods, XML conversion methods, etc.
-  // They remain exactly the same as in your original implementation
-
-  // I'll include the key ones for reference:
 
   /**
    * Get current schema info
@@ -2691,6 +1855,556 @@ export class XmlWysiwygConverter {
   }
 
   /**
+   * Check if a field has enumeration values
+   */
+  private static hasEnumeration(tagName: string): boolean {
+    const schemaInfo = this.schemaInfo[tagName];
+    return (
+      schemaInfo?.type === 'enum' &&
+      Array.isArray(schemaInfo.enumValues) &&
+      schemaInfo.enumValues.length > 0
+    );
+  }
+
+  /**
+   * Get enumeration values for a field
+   */
+  // private static getEnumerationValues(tagName: string): string[] {
+  //   const schemaInfo = this.schemaInfo[tagName];
+  //   return schemaInfo?.enumValues || [];
+  // }
+
+  /**
+   * Parse XSD content directly (if needed for additional schema information)
+   */
+  private static parseAdditionalSchemaInfo(tagName: string): {
+    hasDocumentation?: boolean;
+    pattern?: string;
+    minLength?: number;
+    maxLength?: number;
+    documentation?: string;
+  } {
+    if (!this.xsdContent) return {};
+
+    try {
+      const parser = new DOMParser();
+      const xsdDoc = parser.parseFromString(this.xsdContent, 'application/xml');
+
+      const elements = xsdDoc.querySelectorAll('xs\\:element, element');
+      for (const element of elements) {
+        const elementName = element.getAttribute('name');
+        if (elementName === tagName) {
+          const result: any = {};
+
+          const documentation = element.querySelector(
+            'xs\\:annotation xs\\:documentation, annotation documentation'
+          );
+          if (documentation) {
+            result.hasDocumentation = true;
+            result.documentation = documentation.textContent?.trim();
+          }
+
+          const restriction =
+            element.querySelector(
+              'xs\\:simpleType xs\\:restriction, simpleType restriction'
+            ) || element.querySelector('xs\\:restriction, restriction');
+          if (restriction) {
+            const pattern = restriction.querySelector('xs\\:pattern, pattern');
+            if (pattern) {
+              result.pattern = pattern.getAttribute('value');
+            }
+
+            const minLength = restriction.querySelector(
+              'xs\\:minLength, minLength'
+            );
+            if (minLength) {
+              result.minLength = parseInt(
+                minLength.getAttribute('value') || '0'
+              );
+            }
+
+            const maxLength = restriction.querySelector(
+              'xs\\:maxLength, maxLength'
+            );
+            if (maxLength) {
+              result.maxLength = parseInt(
+                maxLength.getAttribute('value') || '0'
+              );
+            }
+          }
+
+          return result;
+        }
+      }
+    } catch (error) {
+      console.warn('Error parsing additional schema info:', error);
+    }
+
+    return {};
+  }
+
+  /**
+   * Convert XML content to WYSIWYG HTML format with PDF-style layout
+   */
+  static xmlToWysiwyg(xmlContent: string, isEditable: boolean = true): string {
+    try {
+      const unescapedXml = this.unescapeHTML(xmlContent);
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(unescapedXml, 'application/xml');
+
+      const parseError = xmlDoc.querySelector('parsererror');
+      if (parseError) {
+        return `<div class="wysiwyg-error">XML Parsing Error: ${parseError.textContent}</div>`;
+      }
+
+      // Extract document metadata
+      if (xmlDoc.documentElement) {
+        this.documentMetadata.title = this.formatTagName(
+          xmlDoc.documentElement.tagName
+        );
+      }
+
+      let html = `
+        <div class="wysiwyg-document">
+          <style>
+            ${this.getWysiwygStyles()}
+          </style>
+          <div class="wysiwyg-page">
+            ${this.renderHeader(xmlDoc.documentElement, isEditable)}
+            <div class="wysiwyg-content">
+      `;
+
+      if (xmlDoc.documentElement) {
+        html += this.processNode(xmlDoc.documentElement, 0, isEditable);
+      }
+
+      html += `
+            </div>
+            ${this.renderFooter()}
+          </div>
+        </div>
+      `;
+
+      // Initialize event handlers after HTML is rendered
+      setTimeout(() => this.initializeEventHandlers(), 100);
+
+      return html;
+    } catch (error) {
+      return `<div class="wysiwyg-error">Error converting XML: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }</div>`;
+    }
+  }
+
+  // ... [Continue with all the remaining methods from your original code]
+  // renderHeader, renderFooter, processNode, renderField, renderAttributes,
+  // renderTable, getInputType, getContentType, wysiwygToXml, buildXmlFromDocument,
+  // buildXmlElement, tagNameFromTitle, and all utility methods (isEmail, isUrl, etc.)
+  // These remain exactly the same as in your original code
+
+  /**
+   * Render WYSIWYG header with PDF styling
+   */
+  private static renderHeader(
+    rootElement: Element | null,
+    isEditable: boolean
+  ): string {
+    if (!rootElement) return '';
+
+    const title = this.formatTagName(rootElement.tagName);
+    let html = `<div class="wysiwyg-header">`;
+
+    if (isEditable) {
+      html += `<input type="text" class="wysiwyg-title-input" value="${title}" 
+               data-xml-tag="${rootElement.tagName}" placeholder="Document Title" />`;
+    } else {
+      html += `<h1>${title}</h1>`;
+    }
+
+    // Add metadata for attributes
+    if (rootElement.attributes.length > 0) {
+      html += '<div class="wysiwyg-metadata">';
+      for (let i = 0; i < rootElement.attributes.length; i++) {
+        const attr = rootElement.attributes[i];
+        if (i > 0) html += '<span> | </span>';
+        html += `<span>${this.formatTagName(attr.name)}: ${attr.value}</span>`;
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  /**
+   * Render WYSIWYG footer
+   */
+  private static renderFooter(): string {
+    return `
+      <div class="wysiwyg-footer">
+        <span>Page ${this.documentMetadata.pageNumber}</span>
+        <span>${this.documentMetadata.date}</span>
+      </div>
+    `;
+  }
+
+  /**
+   * Process XML node and convert to document-style HTML with PDF layout
+   */
+  private static processNode(
+    node: Element,
+    level: number = 0,
+    isEditable: boolean = true
+  ): string {
+    let result = '';
+
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const hasTextContent =
+        node.textContent &&
+        node.textContent.trim() &&
+        node.children.length === 0;
+      const hasChildElements = node.children.length > 0;
+
+      // Detect if this node represents a collection of repeated elements
+      const isCollection =
+        hasChildElements &&
+        Array.from(node.children).every(
+          (child) =>
+            child.nodeType === Node.ELEMENT_NODE &&
+            child.tagName === node.children[0].tagName
+        );
+
+      // Skip root element content as it's handled in header
+      if (level === 0 && hasChildElements) {
+        Array.from(node.children).forEach((child) => {
+          result += this.processNode(child as Element, level + 1, isEditable);
+        });
+        return result;
+      }
+
+      // Handle different node types based on structure and level
+      if (isCollection && level <= 2) {
+        // Render as table with PDF styling
+        result += this.renderTable(node, level, isEditable);
+      } else if (hasChildElements && !isCollection && level === 1) {
+        // Section header - STORE THE ORIGINAL TAG NAME
+        result += `<h2 class="wysiwyg-section" data-xml-tag="${
+          node.tagName
+        }">${this.formatTagName(node.tagName)}</h2>`;
+
+        // Add attributes if present
+        if (node.attributes.length > 0) {
+          result += this.renderAttributes(node, isEditable);
+        }
+
+        // Process children
+        Array.from(node.children).forEach((child) => {
+          result += this.processNode(child as Element, level + 1, isEditable);
+        });
+      } else if (hasChildElements && !isCollection && level === 2) {
+        // Subsection - STORE THE ORIGINAL TAG NAME
+        result += `<h3 class="wysiwyg-subsection" data-xml-tag="${
+          node.tagName
+        }">${this.formatTagName(node.tagName)}</h3>`;
+
+        // Process children
+        Array.from(node.children).forEach((child) => {
+          result += this.processNode(child as Element, level + 1, isEditable);
+        });
+      } else if (hasTextContent) {
+        // Render as field with PDF styling
+        result += this.renderField(node, isEditable);
+      } else if (hasChildElements && !isCollection) {
+        // Container - process children
+        Array.from(node.children).forEach((child) => {
+          result += this.processNode(child as Element, level + 1, isEditable);
+        });
+      }
+    }
+
+    return result;
+  }
+
+  // ... [Include all remaining methods from your original code here]
+  // All the utility methods, render methods, conversion methods, etc.
+  // They remain exactly the same
+  /**
+   * Render a field with label and value (PDF style)
+   */
+  private static renderField(node: Element, isEditable: boolean): string {
+    const tagName = node.tagName;
+    const text = node.textContent?.trim() || '';
+    const formattedLabel = this.formatTagName(tagName);
+    const contentType = this.getContentType(text);
+    const additionalInfo = this.parseAdditionalSchemaInfo(tagName);
+
+    let html = `<div class="wysiwyg-field-group">`;
+    html += `<span class="wysiwyg-field-label">${formattedLabel}:</span>`;
+
+    if (isEditable) {
+      // Always show display span by default for editable fields
+      let displayValue = text || 'N/A';
+
+      // Format display value based on content type
+      if (contentType === 'email') {
+        displayValue = text;
+      } else if (contentType === 'url') {
+        displayValue = text;
+      } else if (contentType === 'date' && text) {
+        displayValue = this.formatDate(text);
+      } else if (contentType === 'currency') {
+        displayValue = text;
+      }
+
+      // Special handling for enum fields
+      if (this.hasEnumeration(tagName)) {
+        displayValue = text || 'Not specified';
+      }
+
+      html += `<span class="wysiwyg-field-display" style="display: inline-block;">${displayValue}</span>`;
+
+      if (this.hasEnumeration(tagName)) {
+        // Create searchable trigger button (hidden by default)
+        const triggerId = `searchable-${tagName}-${Date.now()}`;
+        html += `<button type="button" 
+                  id="${triggerId}"
+                  class="wysiwyg-searchable-trigger" 
+                  data-xml-tag="${tagName}" 
+                  data-current-value="${text}"
+                  style="display: none;">
+                  ${text || 'Not specified'}
+                </button>`;
+      } else {
+        let validationAttrs = '';
+        if (additionalInfo.minLength)
+          validationAttrs += ` minlength="${additionalInfo.minLength}"`;
+        if (additionalInfo.maxLength)
+          validationAttrs += ` maxlength="${additionalInfo.maxLength}"`;
+        if (additionalInfo.pattern)
+          validationAttrs += ` pattern="${additionalInfo.pattern}"`;
+
+        // Add input (hidden by default)
+        if (text.length > 100 || contentType === 'paragraph') {
+          html += `<textarea class="wysiwyg-textarea-input" 
+                    data-xml-tag="${tagName}" 
+                    data-content="${text}"
+                    placeholder="Enter ${formattedLabel.toLowerCase()}"
+                    rows="4"
+                    style="display: none;"${validationAttrs}>${text}</textarea>`;
+        } else {
+          const inputType = this.getInputType(text);
+          html += `<input type="${inputType}" 
+                    class="wysiwyg-text-input" 
+                    data-xml-tag="${tagName}" 
+                    data-content="${text}"
+                    value="${text}" 
+                    placeholder="Enter ${formattedLabel.toLowerCase()}"
+                    style="display: none;"${validationAttrs} />`;
+        }
+      }
+
+      // Add edit/save/cancel buttons with icons
+      html += `<div class="wysiwyg-field-buttons">`;
+      html += `<button class="wysiwyg-edit-field-button" type="button" title="Edit">✏️</button>`;
+      html += `<button class="wysiwyg-save-field-button" style="display: none;" type="button" title="Save">💾</button>`;
+      html += `<button class="wysiwyg-cancel-field-button" style="display: none;" type="button" title="Cancel">❌</button>`;
+      html += `</div>`;
+    } else {
+      // Non-editable mode - format based on content type
+      let valueHtml = '';
+      switch (contentType) {
+        case 'email':
+          valueHtml = `<a href="mailto:${text}" class="wysiwyg-link">${text}</a>`;
+          break;
+        case 'url':
+          valueHtml = `<a href="${text}" target="_blank" class="wysiwyg-link">${text}</a>`;
+          break;
+        case 'date':
+          valueHtml = `<span class="wysiwyg-date">${this.formatDate(
+            text
+          )}</span>`;
+          break;
+        case 'currency':
+          valueHtml = `<span class="wysiwyg-currency">${text}</span>`;
+          break;
+        case 'paragraph':
+          html += `</div><div class="wysiwyg-text-block">${text}`;
+          valueHtml = '';
+          break;
+        default:
+          valueHtml = `<span class="wysiwyg-field-value">${
+            text || 'N/A'
+          }</span>`;
+      }
+      if (valueHtml) {
+        html += valueHtml;
+      }
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  /**
+   * Render attributes as metadata
+   */
+  private static renderAttributes(node: Element, isEditable: boolean): string {
+    if (node.attributes.length === 0) return '';
+
+    let html = '<div class="wysiwyg-metadata-block">';
+    for (let i = 0; i < node.attributes.length; i++) {
+      const attr = node.attributes[i];
+      html += `
+        <div class="wysiwyg-metadata-item">
+          <span class="wysiwyg-metadata-label">${this.formatTagName(
+            attr.name
+          )}:</span>`;
+
+      if (isEditable) {
+        html += `<input type="text" class="wysiwyg-text-input" 
+                  data-attr-name="${attr.name}" 
+                  value="${attr.value}" 
+                  style="flex: 1; font-size: 9pt;" />`;
+      } else {
+        html += `<span class="wysiwyg-metadata-value">${attr.value}</span>`;
+      }
+
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  /**
+   * Render a collection as a table with PDF styling
+   */
+  private static renderTable(
+    node: Element,
+    _level: number,
+    isEditable: boolean
+  ): string {
+    const childTagName = node.children[0]?.tagName;
+    if (!childTagName) return '';
+
+    // Get headers from first child
+    const headers = Array.from(node.children[0].children).map(
+      (child) => child.tagName
+    );
+
+    let html = `<div class="wysiwyg-table-container" data-collection-tag="${node.tagName}" data-item-tag="${childTagName}">`;
+    html += `<h3 class="wysiwyg-subsection" data-xml-tag="${
+      node.tagName
+    }">${this.formatTagName(node.tagName)}</h3>`;
+
+    if (isEditable) {
+      html += `<button class="wysiwyg-add-button" type="button">Add ${this.formatTagName(
+        childTagName
+      )}</button>`;
+    }
+
+    // ... rest of table rendering remains the same ...
+
+    html += '<div class="wysiwyg-table-wrapper">';
+    html += '<table class="wysiwyg-table">';
+
+    // Table header
+    html += '<thead><tr>';
+    headers.forEach((header) => {
+      html += `<th>${this.formatTagName(header)}</th>`;
+    });
+    if (isEditable) {
+      html += '<th class="wysiwyg-table-actions">Actions</th>';
+    }
+    html += '</tr></thead>';
+
+    // Table body
+    html += '<tbody>';
+    Array.from(node.children).forEach((child, rowIndex) => {
+      html += '<tr>';
+      Array.from(child.children).forEach((grandchild, colIndex) => {
+        const text = grandchild.textContent?.trim() || '';
+        const tagName = grandchild.tagName;
+
+        html += `<td data-xml-tag="${tagName}">`;
+
+        // Add display span (visible by default)
+        html += `<span class="wysiwyg-cell-display">${text || 'N/A'}</span>`;
+
+        if (isEditable) {
+          if (this.hasEnumeration(tagName)) {
+            // Create searchable trigger button for enum fields
+            const triggerId = `searchable-${tagName}-${rowIndex}-${colIndex}`;
+            html += `<button type="button" 
+                    id="${triggerId}"
+                    class="wysiwyg-searchable-trigger" 
+                    data-xml-tag="${tagName}" 
+                    data-current-value="${text}"
+                    style="display: none;">
+                    ${text || 'Not specified'}
+                  </button>`;
+          } else {
+            const inputType = this.getInputType(text);
+            html += `<input type="${inputType}" 
+                    class="wysiwyg-text-input" 
+                    data-xml-tag="${tagName}" 
+                    value="${text}" 
+                    placeholder="${this.formatTagName(tagName)}" 
+                    style="display: none;"
+                    disabled />`;
+          }
+        }
+
+        html += '</td>';
+      });
+
+      if (isEditable) {
+        html += '<td class="wysiwyg-table-actions">';
+        html += `<button class="wysiwyg-edit-row-button" type="button" title="Edit">✏️</button>`;
+        html += `<button class="wysiwyg-save-row-button" style="display: none;" type="button" title="Save">💾</button>`;
+        html += `<button class="wysiwyg-cancel-row-button" style="display: none;" type="button" title="Cancel">❌</button>`;
+        html += `<button class="wysiwyg-delete-button" type="button" title="Delete">🗑️</button>`;
+        html += '</td>';
+      }
+
+      html += '</tr>';
+    });
+    html += '</tbody>';
+    html += '</table>';
+    html += '</div>';
+    html += '</div>';
+
+    return html;
+  }
+
+  /**
+   * Get appropriate HTML input type based on content
+   */
+  private static getInputType(text: string): string {
+    if (this.isEmail(text)) return 'email';
+    if (this.isUrl(text)) return 'url';
+    if (this.isPhone(text)) return 'tel';
+    if (this.isDate(text)) return 'date';
+    if (this.isTime(text)) return 'time';
+    if (this.isNumber(text)) return 'number';
+    return 'text';
+  }
+
+  /**
+   * Get content type classification
+   */
+  private static getContentType(text: string): string {
+    if (this.isEmail(text)) return 'email';
+    if (this.isUrl(text)) return 'url';
+    if (this.isPhone(text)) return 'phone';
+    if (this.isDate(text)) return 'date';
+    if (this.isTime(text)) return 'time';
+    if (this.isCurrency(text)) return 'currency';
+    if (this.isNumber(text)) return 'number';
+    if (text.length > 100) return 'paragraph';
+    return 'text';
+  }
+
+  /**
    * Convert WYSIWYG HTML back to XML
    */
   static wysiwygToXml(htmlContent: string): string {
@@ -2712,9 +2426,12 @@ export class XmlWysiwygConverter {
     }
   }
 
-  // [Include all other methods like buildXmlFromDocument, extractFieldXml,
-  // extractTableXml, formatXml, utility methods, etc. - they remain the same]
-
+  /**
+   * Build XML from document structure
+   */
+  /**
+   * Build XML from document structure
+   */
   private static buildXmlFromDocument(container: Element): string {
     const titleElement = container.querySelector(
       '.wysiwyg-title-input, .wysiwyg-header h1'
